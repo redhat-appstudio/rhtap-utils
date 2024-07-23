@@ -24,7 +24,7 @@ export ACS__API_TOKEN="<REPLACE_ME>"
 tpl_file="charts/values.yaml.tpl"
 
 # Create the new integrations section
-new_integrations=$(cat <<EOF
+cat <<EOF >> $tpl_file
 integrations:
   acs:
     endpoint: "${ACS__CENTRAL_ENDPOINT}"
@@ -43,15 +43,11 @@ $(echo "${GITHUB__APP__PRIVATE_KEY}" | sed 's/^/      /')
     dockerconfigjson: ${QUAY__DOCKERCONFIGJSON}
     token: "${QUAY__API_TOKEN}"
 EOF
-)
 
-# Use awk to replace the integrations section
-awk -v new_integrations="${new_integrations//$'\n'/\\n}" '
-  BEGIN { found = 0 }
-  /^# integrations:/ { found = 1; print new_integrations; next }
-  found && /^# rhtap-dh/ { found = 0 }
-  !found { print }
-' "$tpl_file" > tmpfile && mv tmpfile "$tpl_file"
+# disable ACS installation
+yq e '.rhtapCLI.features.redHatAdvancedClusterSecurity.enabled = false' -i config.yaml
+# disable Quay installation
+yq e '.rhtapCLI.features.redHatQuay.enabled = false' -i config.yaml
 
 echo "make build"
 make build
