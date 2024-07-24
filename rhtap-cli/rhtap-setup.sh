@@ -37,9 +37,9 @@ $(echo "${GITHUB__APP__PRIVATE_KEY}" | sed 's/^/      /')
 EOF
 
   # disable ACS installation
-  # yq e '.rhtapCLI.features.redHatAdvancedClusterSecurity.enabled = false' -i config.yaml
+  yq e '.rhtapCLI.features.redHatAdvancedClusterSecurity.enabled = false' -i config.yaml
   # disable Quay installation
-  # yq e '.rhtapCLI.features.redHatQuay.enabled = false' -i config.yaml
+  yq e '.rhtapCLI.features.redHatQuay.enabled = false' -i config.yaml
 
   echo "make build"
   make build
@@ -101,6 +101,7 @@ jwt_token() {
 
 update_github_app() {
   echo "Update GitHub App"
+  jwt_token $GITHUB__APP__ID $github_app_private_key_path
   curl \
     -X PATCH \
     -H "Accept: application/vnd.github.v3+json" \
