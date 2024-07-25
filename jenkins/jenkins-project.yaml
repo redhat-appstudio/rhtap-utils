@@ -1,0 +1,6 @@
+apiVersion: project.openshift.io/v1
+description: "Jenkins RHTAP"
+displayName: jenkins
+kind: ProjectRequest
+metadata:
+    name: jenkins
