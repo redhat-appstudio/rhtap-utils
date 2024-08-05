@@ -1,0 +1,22 @@
+podTemplate([
+    label: 'jenkins-agent',
+    cloud: 'openshift',
+    serviceAccount: 'jenkins',
+    podRetention: onFailure(),
+    idleMinutes: '30',
+    containers: [
+        containerTemplate(
+            name: 'jnlp',
+            image: "image-registry.openshift-image-registry.svc:5000/jenkins/jenkins-agent-base:latest",
+            alwaysPullImage: true,
+            args: '${computer.jnlpmac} ${computer.name}'
+        )
+    ]
+]) {
+    node('jenkins-agent') {
+        sh """
+            buildah
+            id
+        """
+    }
+}

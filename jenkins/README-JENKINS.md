@@ -5,16 +5,14 @@ RHTAP QE Jenkins Guide
 WIP - Buildah is not working in image
 
 1. Login to OpenShift
-2. Create new project jenkins: oc create -f jenkins-project.yaml
-3. Create image stream: oc create -f jenkins-rhtap-image-stream.yaml
-4. Update image stream to update periodically(you need to have access to image streams - admin for example has access): oc tag quay.io/rhtap_qe/jenkins-rhtap:latest jenkins-rhtap:latest --scheduled
-5. Apply template: oc create -f jenkins-rhtap-openshift.yaml - this will create all resources for Jenkins(template is from OpenShift templates with only change in image and storage size)
-5. Login to Jenkins(look in the rotes in the jenkins openshift project) and generate API token for testing(use this token in RHTAP installation/tests), URL looks like: https://jenkins-jenkins.apps.rosa.zucjw-vgyvo-byt.b1e7.p3.openshiftapps.com/
-
-# Build image for RHTAP Jenkins on OpenShift
-(We need to have tools for running the pipelines for RHTAP: tree, buildah, cosign, syft)
-
-1. Run script ./build-push-image.sh
+2. Create new project jenkins: oc new-project jenkins
+3. Create new build for jenkins agent(with buildah and other utilities for RHTAP pipelines):oc new-build --name jenkins-agent-base  --binary=true --strategy=docker
+4. Start new build: oc start-build jenkins-agent-base --from-file=./jenkins-agent/Dockerfile --wait --follow
+5. Deploy jenkins from openshift template: oc new-app -e JENKINS_PASSWORD=admin123 -e VOLUME_CAPACITY=10Gi jenkins-persistent 
+6. oc apply -f ./jenkins-agent/jenkins-agent-base-scc.yml 
+7. oc adm policy add-scc-to-user jenkins-agent-base -z jenkins
+8. (Optional)You can check if the correct agent image is used and buildah is working by creating new pipeline from file pipeline-buildah
+9. REQUIRED You need to change in jenkins file agent any to jenkins-agent - example in Jenkinsfile-jenkins-agent
 
 # Setup creadentials for RHTAP Jenkins on OpenShift for testing
 
