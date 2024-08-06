@@ -1,14 +1,20 @@
 #!/bin/bash
 
 # Jenkins server details
-JENKINS_URL="<jenkins instance URL>"
-echo $JENKINS_URL
-USER="<jenkins user>"
-API_TOKEN="<jenkins API token>"
+JENKINS_URL="<Jenkins URL>"
+USER="<Jenkins user ID>"
+API_TOKEN="<Jenkins API token>"
+
+PASSWORD=$(pwgen -N1 -s 128)
+COSIGN_PASSWORD=$PASSWORD cosign generate-key-pair
+COSIGN_SECRET_PASSWORD="$(base64 -w0 <<< $PASSWORD)"
+COSIGN_SECRET_KEY="$(base64 -w0 < cosign.key)"
+COSIGN_PUBLIC_KEY="$(base64 -w0 < cosign.pub)"
+
 
 # Arrays of credential details
-CREDENTIAL_IDS=("ROX_API_TOKEN" "ROX_CENTRAL_ENDPOINT" "GITOPS_AUTH_PASSWORD")
-SECRETS=("<acs token>" "<acs endpoint>" "<GitOps token>")
+CREDENTIAL_IDS=("ROX_API_TOKEN" "ROX_CENTRAL_ENDPOINT" "GITOPS_AUTH_PASSWORD", "COSIGN_SECRET_PASSWORD", "COSIGN_SECRET_KEY", "COSIGN_PUBLIC_KEY")
+SECRETS=("<ACS token>" "<ACS endpoint>" "<GitOps token>", $COSIGN_SECRET_PASSWORD, $COSIGN_SECRET_KEY, $COSIGN_PUBLIC_KEY)
 
 # Function to add a single credential
 add_credential() {
