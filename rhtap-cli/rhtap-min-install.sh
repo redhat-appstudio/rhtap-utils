@@ -18,10 +18,20 @@ export QUAY__DOCKERCONFIGJSON="<REPLACE_ME>"
 export QUAY__API_TOKEN="<REPLACE_ME>"
 export ACS__CENTRAL_ENDPOINT="<REPLACE_ME>"
 export ACS__API_TOKEN="<REPLACE_ME>"
+export JENKINS__URL="<REPLACE_ME>"
+export JENKINS__USERNAME="<REPLACE_ME>"
+export JENKINS__TOKEN="<REPLACE_ME>"
+# Gitlab is not verified
+#export GITLAB__APP_ID="<REPLACE_ME>"
+#export GITLAB__APP_SECRET="<REPLACE_ME>"
+#export GITLAB__TOKEN="<REPLACE_ME>"
 
 install_rhtap() {
   # Path to your values.yaml.tpl file
   tpl_file="charts/values.yaml.tpl"
+
+   # Turn ci to true - in case you want to use e2e tests -uncomment this
+   #sed -i 's/ci: false/ci: true/' $tpl_file
 
 #   # Create the new integrations section
   cat <<EOF >> $tpl_file
@@ -47,6 +57,9 @@ EOF
   echo "install"
   ./bin/rhtap-cli integration --kube-config "$KUBECONFIG" quay --url="https://quay.io" --dockerconfigjson="${QUAY__DOCKERCONFIGJSON}" --token="${QUAY__API_TOKEN}"
   ./bin/rhtap-cli integration --kube-config "$KUBECONFIG" acs --endpoint="${ACS__CENTRAL_ENDPOINT}" --token="${ACS__API_TOKEN}"
+  ./bin/rhtap-cli integration --kube-config "$KUBECONFIG" jenkins --token="${JENKINS__TOKEN}" --url="${JENKINS__URL}" --username="${JENKINS__USERNAME}"
+  # Gitlab is not verified
+  #./bin/rhtap-cli integration --kube-config "$KUBECONFIG" gitlab --app-id "${GITLAB__APP_ID}" --app-secret "${GITLAB__APP_SECRET}" --token "${GITLAB__TOKEN}" --force
   ./bin/rhtap-cli deploy --timeout 25m --config ./config.yaml --kube-config "$KUBECONFIG" --debug --log-level=debug
 
   homepage_url=https://$(kubectl -n rhtap get route backstage-developer-hub -o  'jsonpath={.spec.host}')
