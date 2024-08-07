@@ -43,6 +43,10 @@ RUN curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | 
 RUN curl -sL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o /usr/local/bin/cosign && \
     chmod +x /usr/local/bin/cosign
 
+# Install ec
+RUN curl -sL https://github.com/enterprise-contract/ec-cli/releases/download/snapshot/ec_linux_amd64 -o /usr/local/bin/ec && \
+    chmod +x /usr/local/bin/ec
+
 # Update the package list and install necessary packages
 USER root
 
