@@ -42,4 +42,37 @@ RUN curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | 
 # Install cosign
 RUN curl -sL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o /usr/local/bin/cosign && \
     chmod +x /usr/local/bin/cosign
+
+# Install ec
+RUN curl -sL https://github.com/enterprise-contract/ec-cli/releases/download/snapshot/ec_linux_amd64 -o /usr/local/bin/ec && \
+    chmod +x /usr/local/bin/ec
+
+# Update the package list and install necessary packages
+USER root
+
+# Enable the Software Collections repository for Python 3.11
+RUN yum update -y && \
+    yum install -y \
+    gcc \
+    make \
+    openssl-devel \
+    bzip2-devel \
+    libffi-devel \
+    wget && \
+    wget https://www.python.org/ftp/python/3.11.0/Python-3.11.0.tgz && \
+    tar xzf Python-3.11.0.tgz && \
+    cd Python-3.11.0 && \
+    ./configure --enable-optimizations && \
+    make altinstall && \
+    cd .. && \
+    rm -rf Python-3.11.0 Python-3.11.0.tgz && \
+    yum clean all
+
+# Update alternatives to use Python 3.11
+RUN update-alternatives --remove-all python
+RUN alternatives --install /usr/bin/python3 python /usr/local/bin/python3.11 1
+RUN update-alternatives --remove-all python3
+RUN alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.11 1
+
+# Switch back to the jenkins user
 USER 1001

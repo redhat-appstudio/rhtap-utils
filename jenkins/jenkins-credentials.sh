@@ -1,20 +1,23 @@
 #!/bin/bash
 
 # Jenkins server details
-JENKINS_URL="<Jenkins URL>"
-USER="<Jenkins user ID>"
-API_TOKEN="<Jenkins API token>"
+JENKINS__URL="<Jenkins URL>"
+JENKINS__USERNAME="<Jenkins user ID>"
+JENKINS__TOKEN="<Jenkins API token>"
 
 PASSWORD=$(pwgen -N1 -s 128)
 COSIGN_PASSWORD=$PASSWORD cosign generate-key-pair
 COSIGN_SECRET_PASSWORD="$(base64 -w0 <<< $PASSWORD)"
 COSIGN_SECRET_KEY="$(base64 -w0 < cosign.key)"
 COSIGN_PUBLIC_KEY="$(base64 -w0 < cosign.pub)"
+GITOPS_GIT_TOKEN="<GitOps token>"
+ACS_TOKEN="<ACS token>"
+ACS_ENDPOINT="<ACS endpoint>"
 
 
 # Arrays of credential details
-CREDENTIAL_IDS=("ROX_API_TOKEN" "ROX_CENTRAL_ENDPOINT" "GITOPS_AUTH_PASSWORD", "COSIGN_SECRET_PASSWORD", "COSIGN_SECRET_KEY", "COSIGN_PUBLIC_KEY")
-SECRETS=("<ACS token>" "<ACS endpoint>" "<GitOps token>", $COSIGN_SECRET_PASSWORD, $COSIGN_SECRET_KEY, $COSIGN_PUBLIC_KEY)
+CREDENTIAL_IDS=("ROX_API_TOKEN" "ROX_CENTRAL_ENDPOINT" "GITOPS_AUTH_PASSWORD" "COSIGN_SECRET_PASSWORD" "COSIGN_SECRET_KEY" "COSIGN_PUBLIC_KEY")
+SECRETS=($ACS_TOKEN $ACS_ENDPOINT $GITOPS_GIT_TOKEN $COSIGN_SECRET_PASSWORD $COSIGN_SECRET_KEY $COSIGN_PUBLIC_KEY)
 
 # Function to add a single credential
 add_credential() {
@@ -34,13 +37,13 @@ add_credential() {
 }
 EOF
 )
-    curl -X POST "$JENKINS_URL/credentials/store/system/domain/_/createCredentials" \
-    --user "$USER:$API_TOKEN" \
+    curl -X POST "$JENKINS__URL/credentials/store/system/domain/_/createCredentials" \
+    --user "$JENKINS__USERNAME:$JENKINS__TOKEN" \
     --data-urlencode "json=$json"
 }
 
-curl -X POST "$JENKINS_URL/credentials/store/system/domain/_/createCredentials" \
---user "$USER:$API_TOKEN" \
+curl -X POST "$JENKINS__URL/credentials/store/system/domain/_/createCredentials" \
+--user "$JENKINS__USERNAME:$JENKINS__TOKEN" \
 --data-urlencode 'json={
   "": "0",
   "credentials": {
