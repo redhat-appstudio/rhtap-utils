@@ -21,9 +21,8 @@ export ACS__API_TOKEN="<REPLACE_ME>"
 export JENKINS__URL="<REPLACE_ME>"
 export JENKINS__USERNAME="<REPLACE_ME>"
 export JENKINS__TOKEN="<REPLACE_ME>"
-# Gitlab is not verified
-#export GITLAB__APP_ID="<REPLACE_ME>"
-#export GITLAB__APP_SECRET="<REPLACE_ME>"
+export catalogURL=https://github.com/redhat-appstudio/tssc-sample-templates/blob/main/all.yaml
+# Gitlab is disabled by default
 #export GITLAB__TOKEN="<REPLACE_ME>"
 
 install_rhtap() {
@@ -50,6 +49,8 @@ EOF
   yq e '.rhtapCLI.features.redHatAdvancedClusterSecurity.enabled = false' -i config.yaml
   # disable Quay installation
   yq e '.rhtapCLI.features.redHatQuay.enabled = false' -i config.yaml
+  # Change catalog URL
+  yq e '.rhtapCLI.features.redHatDeveloperHub.properties.catalogURL = env(catalogURL)' -i config.yaml
 
   echo "make build"
   make build
@@ -58,8 +59,8 @@ EOF
   ./bin/rhtap-cli integration --kube-config "$KUBECONFIG" quay --url="https://quay.io" --dockerconfigjson="${QUAY__DOCKERCONFIGJSON}" --token="${QUAY__API_TOKEN}"
   ./bin/rhtap-cli integration --kube-config "$KUBECONFIG" acs --endpoint="${ACS__CENTRAL_ENDPOINT}" --token="${ACS__API_TOKEN}"
   ./bin/rhtap-cli integration --kube-config "$KUBECONFIG" jenkins --token="${JENKINS__TOKEN}" --url="${JENKINS__URL}" --username="${JENKINS__USERNAME}"
-  # Gitlab is not verified
-  #./bin/rhtap-cli integration --kube-config "$KUBECONFIG" gitlab --app-id "${GITLAB__APP_ID}" --app-secret "${GITLAB__APP_SECRET}" --token "${GITLAB__TOKEN}" --force
+  # Gitlab is disabled by default
+  #./bin/rhtap-cli integration --kube-config "$KUBECONFIG" gitlab --token "${GITLAB__TOKEN}"
   ./bin/rhtap-cli deploy --timeout 25m --config ./config.yaml --kube-config "$KUBECONFIG" --debug --log-level=debug
 
   homepage_url=https://$(kubectl -n rhtap get route backstage-developer-hub -o  'jsonpath={.spec.host}')
