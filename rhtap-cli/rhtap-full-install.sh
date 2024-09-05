@@ -19,7 +19,7 @@ export GITHUB__APP__WEBHOOK__SECRET="<REPLACE_ME, a random string>"
 ## Exisitng Gitlab server, see function "gitlab_integration"
 export GITLAB__TOKEN="<REPLACE_ME, create a Personal access tokens in page https://gitlab.com/-/user_settings/personal_access_tokens>"
 
-## External Jenkins server, see function "jenkins_integration", see the exiting Jenkins service in doc https://docs.google.com/document/d/1MZAFHUs2DHFNz1n11kKg9dqbfF9akbc_OMCD8mYbu8g/edit#heading=h.utupxh9dx34z
+## External Jenkins server, see function "jenkins_integration". Please refer to guide https://github.com/xinredhat/rhtap-utils/blob/main/jenkins/README-JENKINS.md
 export JENKINS_API_TOKEN="<REPLACE_ME>"                                  
 export JENKINS_URL="<REPLACE_ME>"
 export JENKINS_USERNAME="<REPLACE_ME>"                                     
@@ -27,7 +27,7 @@ export JENKINS_USERNAME="<REPLACE_ME>"
 readonly tpl_file="charts/values.yaml.tpl"
 
 ci_enabled() {
-  echo "[INFO]Turn ci to true, this is required when you perform rhtap-e2e autoamtion test against RHTAP"
+  echo "[INFO]Turn ci to true, this is required when you perform rhtap-e2e automation test against RHTAP"
   sed -i'' -e 's/ci: false/ci: true/g' $tpl_file
 }
 
