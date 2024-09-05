@@ -167,5 +167,6 @@ cleanup() {
 cleanup
 ci_enabled
 install_rhtap
+acs_quay_connection
 update_github_app
 # unit_test
