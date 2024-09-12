@@ -66,7 +66,7 @@ EOF
 
 update_dh_catalog_url() {
   echo "[INFO]Update dh catalog url"
-  DEVELOPER_HUB__CATALOG__URL="https://github.com/redhat-appstudio/tssc-sample-templates/blob/main/all.yaml" # $(cat /usr/local/rhtap-cli-install/developer-hub-catalog-url)
+  DEVELOPER_HUB__CATALOG__URL="https://github.com/redhat-appstudio/tssc-sample-templates/blob/main/all.yaml"
   yq e ".rhtapCLI.features.redHatDeveloperHub.properties.catalogURL = \"${DEVELOPER_HUB__CATALOG__URL}\"" -i config.yaml
 }
 
@@ -164,9 +164,39 @@ cleanup() {
   git checkout -- config.yaml
 }
 
+run-rhtap-e2e() {
+  export RED_HAT_DEVELOPER_HUB_URL GITHUB_TOKEN \
+    GITHUB_ORGANIZATION QUAY_IMAGE_ORG APPLICATION_ROOT_NAMESPACE NODE_TLS_REJECT_UNAUTHORIZED GITLAB_TOKEN \
+    GITLAB_ORGANIZATION QUAY_USERNAME QUAY_PASSWORD IMAGE_REGISTRY
+  GITLAB_TOKEN="$GITLAB__TOKEN" 
+  GITLAB_ORGANIZATION="<REPLACE_ME>"
+  APPLICATION_ROOT_NAMESPACE="<REPLACE_ME>"
+  QUAY_IMAGE_ORG="<REPLACE_ME>"
+  GITHUB_ORGANIZATION="<REPLACE_ME>"
+  GITHUB_TOKEN="$GITOPS__GIT_TOKEN"
+  RED_HAT_DEVELOPER_HUB_URL="$homepage_url"
+  IMAGE_REGISTRY="$quay_host"
+  NODE_TLS_REJECT_UNAUTHORIZED=0
+
+  echo "[INFO] Run rhtap-e2e test"
+  if [ -d "rhtap-e2e" ]; then
+    echo "directory \"rhtap-e2e\" exists, delete it"
+    rm -rf rhtap-e2e
+  fi
+  
+  echo "[INFO] Clone rhtap-e2e repo"
+  git clone https://github.com/redhat-appstudio/rhtap-e2e.git
+  cd rhtap-e2e
+
+  yarn && yarn test tests/gpts/github/quarkus.tekton.test.ts  # run a specific test
+  # yarn && yarn test runTestsByPath tests/gpts/github/  # run all tests in the github folder
+  # yarn && yarn test    # run all tests
+}
+
 cleanup
 ci_enabled
 install_rhtap
 acs_quay_connection
 update_github_app
 # unit_test
+run-rhtap-e2e
