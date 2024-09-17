@@ -66,8 +66,7 @@ EOF
 
 update_dh_catalog_url() {
   echo "[INFO]Update dh catalog url"
-  DEVELOPER_HUB__CATALOG__URL="https://github.com/redhat-appstudio/tssc-sample-templates/blob/main/all.yaml"
-  yq e ".rhtapCLI.features.redHatDeveloperHub.properties.catalogURL = \"${DEVELOPER_HUB__CATALOG__URL}\"" -i config.yaml
+  yq -i ".rhtapCLI.features.redHatDeveloperHub.properties.catalogURL = strenv(DEVELOPER_HUB__CATALOG__URL})" installer/config.yaml
 }
 
 install_rhtap() {
