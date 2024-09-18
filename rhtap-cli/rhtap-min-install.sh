@@ -87,7 +87,7 @@ install_rhtap() {
   jenkins_integration # you can comment it if you don't need it
   quay_integration
   acs_integration
-  ./bin/rhtap-cli deploy --timeout 35m --config ./$config_file --kube-config "$KUBECONFIG" --debug --log-level=debug
+  ./bin/rhtap-cli deploy --timeout 35m --config $config_file --kube-config "$KUBECONFIG" --debug --log-level=debug
 
   homepage_url=https://$(kubectl -n rhtap get route backstage-developer-hub -o 'jsonpath={.spec.host}')
   callback_url=https://$(kubectl -n rhtap get route backstage-developer-hub -o 'jsonpath={.spec.host}')/api/auth/github/handler/frame
