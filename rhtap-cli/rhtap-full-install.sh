@@ -28,6 +28,7 @@ export JENKINS__URL="<REPLACE_ME>"
 export JENKINS__USERNAME="<REPLACE_ME>"                                     
 
 readonly tpl_file="installer/charts/values.yaml.tpl"
+readonly config_file="installer/config.yaml"
 
 ci_enabled() {
   echo "[INFO]Turn ci to true, this is required when you perform rhtap-e2e automation test against RHTAP"
@@ -84,7 +85,7 @@ install_rhtap() {
   githubapp_integration
   gitlab_integration  # you can comment it if you don't need it
   jenkins_integration # you can comment it if you don't need it
-  ./bin/rhtap-cli deploy --timeout 35m --config ./installer/config.yaml --kube-config "$KUBECONFIG" --debug --log-level=debug
+  ./bin/rhtap-cli deploy --timeout 35m --config ./$config_file --kube-config "$KUBECONFIG" --debug --log-level=debug
 
   homepage_url=https://$(kubectl -n rhtap get route backstage-developer-hub -o 'jsonpath={.spec.host}')
   callback_url=https://$(kubectl -n rhtap get route backstage-developer-hub -o 'jsonpath={.spec.host}')/api/auth/github/handler/frame
@@ -162,8 +163,8 @@ update_github_app() {
 
 cleanup() {
   echo "Cleanup"
-  git checkout -- installer/charts/values.yaml.tpl
-  git checkout -- installer/config.yaml
+  git checkout -- $tpl_file
+  git checkout -- $config_file
 }
 
 run-rhtap-e2e() {
