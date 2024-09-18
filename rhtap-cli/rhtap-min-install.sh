@@ -5,6 +5,9 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+## Uncomment when running locally
+#export KUBECONFIG="<REPLACE_ME>"
+
 ## The default catalog URL of the developer hub
 export DEVELOPER_HUB__CATALOG__URL="<REPLACE_ME, for example: https://github.com/redhat-appstudio/tssc-sample-templates/blob/main/all.yaml>"
 
@@ -19,12 +22,13 @@ export GITHUB__APP__WEBHOOK__SECRET="<REPLACE_ME, a random string>"
 ## Exisitng Gitlab server, see function "gitlab_integration"
 export GITLAB__TOKEN="<REPLACE_ME, create a Personal access tokens in page https://gitlab.com/-/user_settings/personal_access_tokens>"
 
-## External Jenkins server, see function "jenkins_integration". Please refer to guide https://github.com/xinredhat/rhtap-utils/blob/main/jenkins/README-JENKINS.md
-export JENKINS_API_TOKEN="<REPLACE_ME>"                                  
-export JENKINS_URL="<REPLACE_ME>"
-export JENKINS_USERNAME="<REPLACE_ME>"
+## External Jenkins server, see function "jenkins_integration". Please refer to guide https://github.com/redhat-appstudio/rhtap-utils/blob/main/jenkins/README-JENKINS.md
+export JENKINS__TOKEN="<REPLACE_ME>"                                  
+export JENKINS__URL="<REPLACE_ME>"
+export JENKINS__USERNAME="<REPLACE_ME>"
 
-readonly tpl_file="charts/values.yaml.tpl"
+readonly tpl_file="installer/charts/values.yaml.tpl"
+readonly config_file="installer/config.yaml"
 
 ci_enabled() {
   echo "[INFO]Turn ci to true, this is required when you perform rhtap-e2e automation test against RHTAP"
@@ -33,7 +37,7 @@ ci_enabled() {
 
 jenkins_integration() {
   echo "[INFO] Integrates an exising Jenkins server into RHTAP"
-  ./bin/rhtap-cli integration --kube-config "$KUBECONFIG" jenkins --token="$JENKINS_API_TOKEN" --url="$JENKINS_URL" --username="$JENKINS_USERNAME"
+  ./bin/rhtap-cli integration --kube-config "$KUBECONFIG" jenkins --token="$JENKINS__TOKEN" --url="$JENKINS__URL" --username="$JENKINS__USERNAME"
 }
 
 gitlab_integration() {
@@ -72,7 +76,7 @@ acs_integration() {
   ./bin/rhtap-cli integration --kube-config "$KUBECONFIG" acs --endpoint="${ACS__CENTRAL_ENDPOINT}" --token="${ACS__API_TOKEN}"
 }
 
-install_rhtap1() {
+install_rhtap() {
   echo "[INFO] Build RHTAP-CLI codes"
   make build
 
@@ -83,7 +87,7 @@ install_rhtap1() {
   jenkins_integration # you can comment it if you don't need it
   quay_integration
   acs_integration
-  ./bin/rhtap-cli deploy --timeout 35m --config ./config.yaml --kube-config "$KUBECONFIG" --debug --log-level=debug
+  ./bin/rhtap-cli deploy --timeout 35m --config $config_file --kube-config "$KUBECONFIG" --debug --log-level=debug
 
   homepage_url=https://$(kubectl -n rhtap get route backstage-developer-hub -o 'jsonpath={.spec.host}')
   callback_url=https://$(kubectl -n rhtap get route backstage-developer-hub -o 'jsonpath={.spec.host}')/api/auth/github/handler/frame
@@ -151,8 +155,8 @@ update_github_app() {
 
 cleanup() {
   echo "Cleanup"
-  git checkout -- charts/values.yaml.tpl
-  git checkout -- config.yaml
+  git checkout -- $tpl_file
+  git checkout -- $config_file
 }
 
 run-rhtap-e2e() {
