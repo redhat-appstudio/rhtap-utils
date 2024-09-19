@@ -63,7 +63,7 @@ EOF
 
 update_dh_catalog_url() {
   echo "[INFO]Update dh catalog url"
-  yq -i ".rhtapCLI.features.redHatDeveloperHub.properties.catalogURL = strenv(DEVELOPER_HUB__CATALOG__URL})" installer/config.yaml
+  yq -i ".rhtapCLI.features.redHatDeveloperHub.properties.catalogURL = strenv(DEVELOPER_HUB__CATALOG__URL)" installer/config.yaml
 }
 
 quay_integration() {
