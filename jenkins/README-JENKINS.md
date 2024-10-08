@@ -30,3 +30,5 @@ RHTAP QE Jenkins Guide
  - Buildah in jenkins job/pipeline does not work - You have not changed agent in Jenkinsfile or the jenkins agent pod does not run in privileged mode
  - Jenkins job status is not reported back to developer hub - You do not have correct credentials for Jenkins in developer hub, update  ns/rhtap/secrets/developer-hub-rhtap-env/yaml with correct creds
  - 'Jenkins' doesn't have label 'jenkins-agent' - You need to setup correct Jenkins agent in your Jenkinsfile and check labels, if they are correct. Verify also Jenkins agent settings in Jenkinsfile.
+ - `error: error processing template "openshift/jenkins-persistent": the namespace of the provided object does not match the namespace sent on the request`
+   when running `oc new-app` - your `oc` version may be out of date, try downloading the latest version
