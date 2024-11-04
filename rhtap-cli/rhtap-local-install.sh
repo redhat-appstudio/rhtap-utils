@@ -10,6 +10,7 @@ export quay_install_enabled="false"
 export github_enabled="true"
 export gitlab_enabled="true"
 export jenkins_enabled="true"
+export bitbucket_enabled="false"
 
 export DEVELOPER_HUB__CATALOG__URL="https://github.com/redhat-appstudio/tssc-sample-templates/blob/main/all.yaml" 
 # Variables for GitHub integration
@@ -33,6 +34,9 @@ export QUAY__API_TOKEN="<REPLACE_ME>"
 # Variables for ACS integration
 export ACS__CENTRAL_ENDPOINT="<REPLACE_ME>"
 export ACS__API_TOKEN="<REPLACE_ME>"
+## variables for Bitbucket integration
+export BITBUCKET_USERNAME="<REPLACE_ME>"
+export BITBUCKET_APP_PASSWORD="<REPLACE_ME>"
 
 jwt_token() {
   app_id=$1     # App ID as first argument
