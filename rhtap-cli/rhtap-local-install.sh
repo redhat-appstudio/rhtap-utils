@@ -95,7 +95,8 @@ run-rhtap-e2e() {
   export GITHUB_ORGANIZATION="<REPLACE_ME>"
   export GITLAB_ORGANIZATION="<REPLACE_ME>"
   export QUAY_IMAGE_ORG="<REPLACE_ME>"
-  export IMAGE_REGISTRY="<REPLACE_ME>"  ## "quay.io" or "$(kubectl -n rhtap-quay get route rhtap-quay-quay -o 'jsonpath={.spec.host}')"
+  export IMAGE_REGISTRY="<REPLACE_ME>" ## "quay.io" or "$(kubectl -n rhtap-quay get route rhtap-quay-quay -o 'jsonpath={.spec.host}')"
+
   export RED_HAT_DEVELOPER_HUB_URL="https://$(kubectl -n rhtap get route backstage-developer-hub -o 'jsonpath={.spec.host}')"
   export NODE_TLS_REJECT_UNAUTHORIZED=0
 
@@ -107,6 +108,7 @@ run-rhtap-e2e() {
   cd rhtap-e2e
 
   yarn && yarn test tests/gpts/github/quarkus.tekton.test.ts
+  # yarn && yarn test runTestsByPath tests/gpts/github/
 }
 
 integration-tests/scripts/install.sh
