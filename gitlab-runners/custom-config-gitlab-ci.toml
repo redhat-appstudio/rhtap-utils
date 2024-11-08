@@ -3,6 +3,9 @@
   [runners.kubernetes]
       service_account = "gitlab-ci-sa"
   [runners.kubernetes.pod_security_context]
+      run_as_non_root = false
+      run_as_user = 0
     [runners.kubernetes.build_container_security_context]
+      run_as_user = 0
     [runners.kubernetes.build_container_security_context.capabilities]
       add = ["SETFCAP", "MKNOD"]
