@@ -15,7 +15,9 @@
     - You will need the username and token for RHTAP installation, setting creds in Jenkins, running e2e tests
 6. You can continue with RHTAP Installation (do not forget to add Jenkins integration with correct parameters: Jenkins URL, username and token)
 7. REQUIRED In your Jenkinsfile, change `agent any` to the content of [Jenkinsfile-jenkins-agent](./Jenkinsfile-jenkins-agent) (you need to copy the whole kubernetes settings)
-8. When you are creating a Job in Jenkins, it needs to have same the same name as the corresponding component to make RHDH associate them
+    - (Option A) You can build your own image on cluster, where you run the Jenkins, then you can use [Dockerfile](./jenkins-agent/Dockerfile) 
+    - (Option B) You can replace the image in `image-registry.openshift-image-registry.svc:5000/jenkins/jenkins-agent-base:latest` in [Jenkinsfile-jenkins-agent](./Jenkinsfile-jenkins-agent) to          `quay.io/jkopriva/rhtap-jenkins-agent:0.1`
+9. When you are creating a Job in Jenkins, it needs to have same the same name as the corresponding component to make RHDH associate them
 
 ## Setup credentials for RHTAP Jenkins on OpenShift for testing
 
