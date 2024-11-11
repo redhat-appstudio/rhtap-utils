@@ -17,7 +17,8 @@ readOnlyRootFilesystem: false
 requiredDropCapabilities:
 - KILL
 runAsUser:
-  type: RunAsAny
+  type: MustRunAs
+  uid: 0
 seLinuxContext:
   type: RunAsAny
 supplementalGroups:
