@@ -17,10 +17,17 @@ QUAY_PASSWORD="<Quay password>"
 ACS_TOKEN="<ACS token>"
 ACS_ENDPOINT="<ACS endpoint>"
 
+# SBOM automatic upload creds
+TRUSTIFICATION_BOMBASTIC_API_URL="$(kubectl get -n rhtap secrets/rhtap-trustification-integration --template={{.data.bombastic_api_url}} | base64 -d)"
+TRUSTIFICATION_OIDC_ISSUER_URL="$(kubectl get -n rhtap secrets/rhtap-trustification-integration --template={{.data.oidc_issuer_url}} | base64 -d)"
+TRUSTIFICATION_OIDC_CLIENT_ID="$(kubectl get -n rhtap secrets/rhtap-trustification-integration --template={{.data.oidc_client_id}} | base64 -d)"
+TRUSTIFICATION_OIDC_CLIENT_SECRET="$(kubectl get -n rhtap secrets/rhtap-trustification-integration --template={{.data.oidc_client_secret}} | base64 -d)"
+TRUSTIFICATION_SUPPORTED_CYCLONEDX_VERSION="$(kubectl get -n rhtap secrets/rhtap-trustification-integration --template={{.data.supported_cyclonedx_version}} | base64 -d)"
+
 
 # Arrays of credential details
-CREDENTIAL_IDS=("ROX_API_TOKEN" "ROX_CENTRAL_ENDPOINT" "GITOPS_AUTH_USERNAME" "GITOPS_AUTH_PASSWORD" "COSIGN_SECRET_PASSWORD" "COSIGN_SECRET_KEY" "COSIGN_PUBLIC_KEY")
-SECRETS=($ACS_TOKEN $ACS_ENDPOINT $GITOPS_AUTH_USERNAME $GITOPS_GIT_TOKEN $COSIGN_SECRET_PASSWORD $COSIGN_SECRET_KEY $COSIGN_PUBLIC_KEY)
+CREDENTIAL_IDS=("ROX_API_TOKEN" "ROX_CENTRAL_ENDPOINT" "GITOPS_AUTH_USERNAME" "GITOPS_AUTH_PASSWORD" "COSIGN_SECRET_PASSWORD" "COSIGN_SECRET_KEY" "COSIGN_PUBLIC_KEY" "TRUSTIFICATION_BOMBASTIC_API_URL" "TRUSTIFICATION_OIDC_ISSUER_URL" "TRUSTIFICATION_OIDC_CLIENT_ID" "TRUSTIFICATION_OIDC_CLIENT_SECRET" "TRUSTIFICATION_SUPPORTED_CYCLONEDX_VERSION")
+SECRETS=($ACS_TOKEN $ACS_ENDPOINT $GITOPS_AUTH_USERNAME $GITOPS_GIT_TOKEN $COSIGN_SECRET_PASSWORD $COSIGN_SECRET_KEY $COSIGN_PUBLIC_KEY $TRUSTIFICATION_BOMBASTIC_API_URL $TRUSTIFICATION_OIDC_ISSUER_URL $TRUSTIFICATION_OIDC_CLIENT_ID $TRUSTIFICATION_OIDC_CLIENT_SECRET $TRUSTIFICATION_SUPPORTED_CYCLONEDX_VERSION)
 
 # Function to add a single credential
 add_secret() {
@@ -79,6 +86,7 @@ create_credentials() {
 # Add multiple credentials
 for i in "${!CREDENTIAL_IDS[@]}"; do
     add_secret "${CREDENTIAL_IDS[$i]}" "${SECRETS[$i]}"
+    echo "Credential ${CREDENTIAL_IDS[$i]} is set" 
 done
 
 # Add usernames with passwords
