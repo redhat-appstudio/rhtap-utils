@@ -87,7 +87,6 @@ create_credentials() {
 for i in "${!CREDENTIAL_IDS[@]}"; do
     add_secret "${CREDENTIAL_IDS[$i]}" "${SECRETS[$i]}"
     echo "Credential ${CREDENTIAL_IDS[$i]} is set" 
-    sleep 2
 done
 
 # Add usernames with passwords
