@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set dry_run to true for not deleting repos, it will provide list of repos to delete
-dry_run="${dry_run:-false}"
+dry_run="${dry_run:-true}"
 
 # Set the GitHub Token and Organization name
 export GITHUB_TOKEN="$GITHUB_ORG_TOKEN"
