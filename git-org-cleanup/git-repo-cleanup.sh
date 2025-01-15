@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Set dry_run to true for not deleting repos, it will provide list of repos to delete
+dry_run="${dry_run:-false}"
+
 # Set the GitHub Token and Organization name
 export GITHUB_TOKEN="$GITHUB_ORG_TOKEN"
 export GITHUB_ORG="$GITHUB_ORG_NAME"
@@ -16,6 +19,10 @@ repo_name_regex="^[0-9a-z]{9}-(python|dotnet-basic|java-quarkus|go|nodejs|java-s
 
 # Fetch the list of repositories from GitHub API
 repos=$(curl -s -X GET -H "$AUTH_HEADER" "https://api.github.com/orgs/$GITHUB_ORG/repos?per_page=100")
+if [ "$(echo $repos | jq -r .status 2>/dev/null)" ]; then
+    echo "Error Fetching repositories '$repos' "
+    exit 1
+fi
 
 echo "$repos" | jq -c '.[]' | while read -r repo; do
     repo_name=$(echo $repo | jq -r '.name')
@@ -27,14 +34,18 @@ echo "$repos" | jq -c '.[]' | while read -r repo; do
     # If the repository hasn't been updated in the last 2 weeks, consider it for cleanup
     if [[ $repo_name =~ $repo_name_regex ]] && [ $last_push_time -lt $cutoff_time ]; then
         echo "Deleting repository '$repo_name'. Last updated at '$last_push' "
-        delete_response=$(curl -s -X DELETE \
-            -H "$AUTH_HEADER" \
-            "https://api.github.com/repos/$GITHUB_ORG/$repo_name")
 
-        if [ -z "$delete_response" ]; then
-            echo "Repository '$repo_name' deleted."
-        else
-            echo "Failed to delete repository '$repo_name'."
+        if [[ "$dry_run" != "true" ]]; then
+            delete_response=$(curl -s -X DELETE \
+                -H "$AUTH_HEADER" \
+                "https://api.github.com/repos/$GITHUB_ORG/$repo_name")
+
+            if [ -z "$delete_response" ]; then
+                echo "Repository '$repo_name' deleted."
+            else
+                echo "Failed to delete repository '$repo_name'\n$delete_response"
+            fi
         fi
+
     fi
 done

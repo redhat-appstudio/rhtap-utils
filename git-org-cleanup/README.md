@@ -1,6 +1,7 @@
 # RHTAP GitHub Organization Cleanup
 
 Cleaning up github repositories created from rhtap-e2e tests which has no activity in past 2 weeks.
+The script has option to dry run for getting the list of repos that will be deleted without deleting them.
 
 ### Manual Cleanup
 
