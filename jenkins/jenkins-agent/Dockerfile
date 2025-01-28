@@ -1,4 +1,4 @@
-FROM registry.redhat.io/rhel8/go-toolset:1.21.11-1.1720406008 AS build
+FROM golang:1.23.3 AS build
 
 WORKDIR /src
 
@@ -50,8 +50,8 @@ RUN adduser -g 0 -u 1001 jenkins && \
 
 # Download and install tree RPM package tree  
 RUN curl -sL https://vault.centos.org/8.5.2111/BaseOS/x86_64/os/Packages/tree-1.7.0-15.el8.x86_64.rpm -o /tmp/tree.rpm && \
-yum localinstall -y /tmp/tree.rpm && \
-rm -f /tmp/tree.rpm
+    yum localinstall -y /tmp/tree.rpm && \
+    rm -f /tmp/tree.rpm
 
 # Install yq (YAML processor)
 RUN curl -sL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/bin/yq && \
@@ -70,9 +70,9 @@ USER root
 
 # Update package manager and install required packages
 RUN yum -y update && \
-#    yum -y install epel-release && \
+    #    yum -y install epel-release && \
     yum -y install python3.11 python3.11-devel gcc openssl-devel bzip2-devel libffi-devel make && \
-#    yum -y groupinstall "Development Tools" && \
+    #    yum -y groupinstall "Development Tools" && \
     yum -y clean all
 
 # Update alternatives to use Python 3.11
