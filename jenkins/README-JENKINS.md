@@ -22,7 +22,7 @@
 
 ## Setup credentials for RHTAP Jenkins on OpenShift for testing
 
-1. Check credentials in [jenkins-credentials.sh](./jenkins-credentials.sh) (ACS endpoint, ACS token, GitOps token, Quay username/password...) and values for your Jenkins instance(URL, username and token)
+1. Check credentials in [jenkins-credentials.sh](./jenkins-credentials.sh) (ACS endpoint, ACS token, GitOps token, Quay username/password...) and values for your Jenkins instance(URL, username and token). For TRUSTIFICATION credentials either login to OpenShift with your RHTAP instance(enables automatic credentials upload) or insert the values manually
 2. Run script [./jenkins-credentials.sh](./jenkins-credentials.sh)
 3. (For GitLab you also need to add the `GITOPS_AUTH_USERNAME` variable)
 
