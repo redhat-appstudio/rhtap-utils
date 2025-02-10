@@ -16,10 +16,12 @@ spec:
     spec:
       containers:
       - name: nexus
-        image: sonatype/nexus3
+        image: sonatype/nexus3:latest
         ports:
         - containerPort: 8081
-        - containerPort: 8082
+          name: nexus-ui
+        - containerPort: 8082 #Docker Registry Port (you can configure in Nexus later)
+          name: nexus-docker
         volumeMounts:
         - mountPath: /nexus-data
           name: nexus-data
