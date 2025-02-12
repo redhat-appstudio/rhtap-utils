@@ -33,7 +33,7 @@ Go to `Administration` -> `Repositories` -> `Create a Repository` -> `Local`, Se
 5. Set Me Up - Docker Repository
 
 Go to `Application` -> `JFrog Container Registry` -> `Artifacts`, Click the Docker Repository created at step  `4. Create a Local Docker Repository`, Click `Set Me Up` to set up a generic client
-[Set Me Up](./images/set_me_up.png)
+![Set Me Up](./images/set_me_up.png)
 
 When you input JFrog account password, it generates an identity token and Docker auth contenxt, such like below 
 
