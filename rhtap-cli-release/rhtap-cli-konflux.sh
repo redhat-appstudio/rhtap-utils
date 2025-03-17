@@ -6,7 +6,9 @@ dry_run="${dry_run:-false}"
 REPOSITORY="${REPOSITORY:-konflux-release-data}"
 GITLAB_ORG="${GITLAB_ORG:-releng}"
 VALID_STEPS=("all" "stream" "rpa")
+VALID_CMDS=("all","branch","update","commit","mr","merge","check","check_image")
 STEPS=("all")
+START_CMD="all"
 
 # Testing Variables
 TEST="false"
@@ -44,6 +46,8 @@ help_text() {
     echo "-r, --repository=REPOSITORY Specify a repository, Default: konflux-release-data"
     echo "-s, --steps=STEPS           Specify a comma separated list of steps, Valid: (stream,rpa,all) Default: all"
     echo "-v, --version=VERSION       Specify version of release as #.# (ex. 1.4), Required"
+    echo "-c, --command=START_CMD     Specify command to start first step at. Used for rerun after failure."
+    echo "                                   Valid: (branch,update,commit,mr,merge,check,check_image) Default: all"
 }
 
 short_opt() {
@@ -82,6 +86,22 @@ verify_syntax() {
           ;;
         --branch=*)
           long_opt "BRANCH" $@
+          shift
+          ;;
+        -c)
+          short_opt "START_CMD" $@
+          if [[ ! " ${VALID_CMDS[*]} " =~ "${START_CMD}" ]]; then
+              echo "ERROR: Invalid Command entered"
+              exit 1
+          fi
+          shift 2
+          ;;
+        --command=*)
+          long_opt "START_CMD" $@
+          if [[ ! " ${VALID_CMDS[*]} " =~ "${START_CMD}" ]]; then
+              echo "ERROR: Invalid Command entered"
+              exit 1
+          fi
           shift
           ;;
         -o)
@@ -164,31 +184,34 @@ verify_syntax() {
         echo "ERROR: KONFLUX_KUBECONFIG env variable not set."
         exit 1
     fi
-
 }
 
 create_branch() {
-    cmd="curl -s -X POST -H \"$AUTH_HEADER\" \"https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/repository/branches?branch=$BRANCH&ref=main\""
+    cmd="curl -s --fail-with-body -X POST -H \"$AUTH_HEADER\" \"https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/repository/branches?branch=$BRANCH&ref=main\""
 
     # Check if dry run
     if [[ "$dry_run" != "true" ]]; then
         # Not dry run, Create branch
         printf "\nCreating branch '$BRANCH' in repository '$GITLAB_ORG/$REPOSITORY'.\n"
         res=$(eval "$cmd")
-        if [ "$(echo $res | jq -r 'has("error")' 2>/dev/null)" == "true" ]; then
-            message="$(echo $res | jq -r .error)"
-            echo "ERROR: Creating '$BRANCH' - $message"
-            exit 1
-        elif [ "$(echo $res | jq -r 'has("message")' 2>/dev/null)" == "true" ]; then
-            message="$(echo $res | jq -r .message)"
-            echo "ERROR: Creating '$BRANCH' - $message"
-            exit 1
+        exit_code=$?
+
+        if [ $exit_code -ne 0 ]; then
+            if [ "$(echo $res | jq -r 'has("error")' 2>/dev/null)" == "true" ]; then
+                message="$(echo $res | jq -r .error)"
+                echo "ERROR: Creating '$BRANCH' - $message"
+                exit 1
+            elif [ "$(echo $res | jq -r 'has("message")' 2>/dev/null)" == "true" ]; then
+                message="$(echo $res | jq -r .message)"
+                echo "ERROR: Creating '$BRANCH' - $message"
+                exit 1
+            fi
         fi
         printf "Creation of branch '$BRANCH' in repository '$GITLAB_ORG/$REPOSITORY' - SUCCESSFUL\n\n"
     else
         # Dry run print command
         printf "\nCMD to create branch '$BRANCH' in repository '$GITLAB_ORG/$REPOSITORY'\n"
-        echo -e "CMD>: $cmd"
+        echo -e "CMD>: $cmd \n"
     fi
 }
 
@@ -232,6 +255,10 @@ update_file_content() {
     else
         echo "ERROR: Failed to update $PATH_TO_FILE - No conversion data for file"
     fi
+
+    echo -e "\nContents of $PATH_TO_FILE"
+    cat $PATH_TO_FILE
+    echo " "
 }
 
 update_files() {
@@ -246,12 +273,12 @@ update_files() {
         update_file_content
     done || exit 1
 
-    echo -e "Update of files in branch $BRANCH for release $VERSION - SUCCESSFUL"
+    echo -e "Update of files in branch $BRANCH for release $VERSION - SUCCESSFUL\n"
 }
 
 run_build_manifests() {
     # Complete modifications by running build-manifest.sh
-    echo -e "\nRunning build-manifests.sh"
+    echo -e "Running build-manifests.sh"
     ./tenants-config/build-manifests.sh > /dev/null
 
     if [ $? -ne 0 ]; then
@@ -259,7 +286,7 @@ run_build_manifests() {
         exit 1
     fi
 
-    echo "Running of build-manifests.sh - SUCCESSFUL"
+    echo -e "Running of build-manifests.sh - SUCCESSFUL\n"
 
     # Pause for 10
     sleep 10
@@ -275,7 +302,7 @@ get_changes() {
     # Get Modified files
     IFS=$'\n' read -r -d '' -a MODIFIED_FILES < <( git diff --name-only --diff-filter M HEAD && printf '\0' )
 
-    echo -e  "\nUntracked Files:"
+    echo -e  "Untracked Files:"
     for item in "${UNTRACKED_FILES[@]}"; do
         echo $item
     done
@@ -290,9 +317,11 @@ get_changes() {
         echo $item
     done
 
-    if [ -z "${UNTRACKED_FILES[@]}" ] && [ -z "${DELETED_FILES[@]}" ] && [ -z "${MODIFIED_FILES[@]}" ]; then
-        echo -e "\nERROR: No changes to merge"
-        exit 1
+    if [[ "$dry_run" == "false" ]]; then
+        if [ -z "${UNTRACKED_FILES[@]}" ] && [ -z "${DELETED_FILES[@]}" ] && [ -z "${MODIFIED_FILES[@]}" ]; then
+            echo -e "\nERROR: No changes to commit"
+            exit 1
+        fi
     fi
 }
 
@@ -343,7 +372,7 @@ EOF
 
     # Remove trailing comma
     ACTIONS=${ACTIONS%?}
- 
+
     # Construct the JSON payload
     DATA=$(cat <<EOF
     '{
@@ -357,13 +386,19 @@ EOF
     )
 
     # Commit cmd
-    COMMIT_CMD="curl -s -X POST -H \"$AUTH_HEADER\" -H \"Content-Type: application/json\" -d $DATA \"https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/repository/commits\"" 
+    COMMIT_CMD="curl -s --fail-with-body -X POST -H \"$AUTH_HEADER\" -H \"Content-Type: application/json\" -d $DATA \"https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/repository/commits\""
 }
 
 run_commit_cmd() {
     if [[ "$dry_run" != "true" ]]; then
 
         printf "\nCommit changes to branch '$BRANCH'\n"
+
+        if [ "$ACTIONS" == "" ]; then
+            echo "ERROR: No changes to commit"
+            exit 1
+        fi
+
         res=$(eval "$COMMIT_CMD")
         exit_code=$?
 
@@ -381,7 +416,7 @@ run_commit_cmd() {
                 exit 1
             fi
         fi
-        printf "Commit of changes to branch "$BRANCH" - SUCCESSFUL\n\n"
+        printf "Commit of changes to branch "$BRANCH" - SUCCESSFUL\n"
     else
         # Dry run print command
         printf "\nCMD to create commit and update files\n"
@@ -390,11 +425,11 @@ run_commit_cmd() {
 }
 
 create_mr() {
-    CREATE_MR_CMD="curl -s -X POST -H \"$AUTH_HEADER\" -d \"source_branch=$BRANCH\" -d \"target_branch=main\" -d \"title=$COMMIT_MESSAGE\" -d \"description=$DESCRIPTION\" -d \"id=$URI_ENCODED_PATH\" -d \"remove_source_branch=True\" -d \"squash=True\" \"https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests\""
+    CREATE_MR_CMD="curl -s --fail-with-body -X POST -H \"$AUTH_HEADER\" -d \"source_branch=$BRANCH\" -d \"target_branch=main\" -d \"title=$COMMIT_MESSAGE\" -d \"description=$DESCRIPTION\" -d \"id=$URI_ENCODED_PATH\" -d \"remove_source_branch=True\" -d \"squash=True\" \"https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests\""
 
     if [[ "$dry_run" != "true" ]]; then
 
-        printf "Create MR for '$BRANCH'\n"
+        printf "\nCreate MR for '$BRANCH'\n"
         res=$(eval "$CREATE_MR_CMD")
         exit_code=$?
 
@@ -418,12 +453,20 @@ create_mr() {
         STATE=$(echo $res | jq -r '.state' 2>/dev/null)
         MERGE_STATUS=$(echo $res | jq -r '.detailed_merge_status' 2>/dev/null)
 
+        COMMITS=$(curl -s --fail-with-body -X GET -H "$AUTH_HEADER" "https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID/commits")
+        NUM_COMMITS="$(echo $COMMITS | jq length)"
+        if [ "$NUM_COMMITS" == "0" ]; then
+             echo "ERROR: MR contains no changes"
+             curl -s --fail-with-body -X DELETE -H "$AUTH_HEADER" "https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID"
+             exit 1
+        fi
+
         echo -e "MR IID: $IID\n"
-        COUNT=60
+        COUNT=180
         
         printf "Monitoring merge status\n"
         while [[ "$MERGE_STATUS" != "mergeable" ]]; do
-            INDEX=$((60-COUNT+1))
+            INDEX=$((180-COUNT+1))
             echo -ne "$INDEX $MERGE_STATUS \r"
             res=$(curl -s -X GET -H "PRIVATE-TOKEN:HwSPosgqDc6Zu8Jtjpxv" "https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID")
             IID=$(echo $res | jq -r '.iid' 2>/dev/null)
@@ -432,7 +475,7 @@ create_mr() {
 
             # Make sure mr is open
             if [[ "$MERGE_STATUS" == "not_open" ]]; then
-                res=$(curl -s -X PUT -H "PRIVATE-TOKEN:HwSPosgqDc6Zu8Jtjpxv" -d "state_event=open" "https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID")
+                res=$(curl -s --fail-with-body -X PUT -H "PRIVATE-TOKEN:HwSPosgqDc6Zu8Jtjpxv" -d "state_event=open" "https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID")
                 exit_code=$?
                 if [ $exit_code -ne 0 ]; then
                     if [ "$(echo $res | jq -r 'has("error")' 2>/dev/null)" == "true" ]; then
@@ -451,7 +494,7 @@ create_mr() {
             fi
 
             if [[ "MERGE_STATUS" == "not_approved" ]]; then
-                res=$(curl -s -X POST -H "$AUTH_HEADER" "https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID/approve")
+                res=$(curl -s --fail-with-body -X POST -H "$AUTH_HEADER" "https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID/approve")
                 exit_code=$?
                 if [ $exit_code -ne 0 ]; then
                     if [ "$(echo $res | jq -r 'has("error")' 2>/dev/null)" == "true" ]; then
@@ -477,6 +520,7 @@ create_mr() {
                 exit 1
             fi
         done
+        echo "Merge status: $MERGE_STATUS"
     else
         # Dry run print command
         printf "\nCMD to create MR\n"
@@ -485,13 +529,56 @@ create_mr() {
 }
 
 merge_mr() {
-    MERGE_CMD="curl -s -X PUT -H \"$AUTH_HEADER\" \"https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID/merge\""
+    URI_COMMIT_MSG=$(echo "$COMMIT_MESSAGE" | jq -Rr @uri)
+    GET_MR_CMD="curl -s --fail-with-body -X GET -H \"$AUTH_HEADER\" \"https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests?search=$URI_COMMIT_MSG&in=title&state=opened\""
+
+    if [[ -z "$IID" ]]; then
+        res=$(eval "$GET_MR_CMD")
+
+        exit_code=$?
+
+        if [ $exit_code -ne 0 ]; then
+            if [[ "$dry_run" != "true" ]]; then
+                printf "\nGet MR\n"
+                if [ "$(echo $res | jq -r 'has("error")' 2>/dev/null)" == "true" ]; then
+                    message="$(echo $res | jq -r .error)"
+                    echo "ERROR: Getting MR - $message"
+                    exit 1
+                elif [ "$(echo $res | jq -r 'has("message")' 2>/dev/null)" == "true" ]; then
+                    message="$(echo $res | jq -r .message)"
+                    echo "ERROR: Getting MR - $message"
+                    exit 1
+                else
+                    echo "ERROR: Getting MR - $res"
+                    exit 1
+                fi
+            fi
+        else
+            ITEMS="$(echo $res | jq length)"
+            if [ "$ITEMS" == "1" ]; then
+                printf "\nGet MR\n"
+                while read i; do
+                    IID=$(echo $i | jq -r '.iid' 2>/dev/null)
+                    MERGE_STATUS=$(echo $i | jq -r '.detailed_merge_status' 2>/dev/null)
+                done < <(echo $res | jq -c '.[]')
+                printf "Getting MR - SUCCESSFUL\n"
+            elif [[ "$ITEM" -gt "1" ]]; then
+                printf "\nGet MR\n"
+                echo "ERROR: Multiple MR's found"
+                exit 1
+            else
+                echo -e  "\nERROR: No MR's to merge"
+                exit 1
+            fi
+        fi
+    fi
+
+    MERGE_CMD="curl -s --fail-with-body -X PUT -H \"$AUTH_HEADER\" \"https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID/merge\""
 
     if [[ "$dry_run" != "true" ]]; then
-        echo "Merge status: $MERGE_STATUS"
-        printf "\nMerging MR\n"
+        printf "\nMerging MR $IID\n"
         if [[ "$MERGE_STATUS" == "mergeable" ]]; then
-            res=$(curl -s -X PUT -H "$AUTH_HEADER" "https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID/merge")
+            res=$(eval "$MERGE_CMD")
             exit_code=$?
             if [ $exit_code -ne 0 ]; then
                 if [ "$(echo $res | jq -r 'has("error")' 2>/dev/null)" == "true" ]; then
@@ -507,7 +594,7 @@ merge_mr() {
                     exit 1
                 fi
             fi
-            printf "Merging of MR - SUCCESSFUL\n\n"
+            printf "Merging of MR - SUCCESSFUL\n"
         else
             echo "ERROR: Unable to merge MR - $MERGE_STATUS"
             exit 1
@@ -516,7 +603,7 @@ merge_mr() {
         # Dry run print command
         if [ -z "$IID" ]; then
             IID="<IID>"
-            MERGE_CMD="curl -s -X PUT -H \"$AUTH_HEADER\" \"https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID/merge\""
+            MERGE_CMD="curl -s --fail-with-body -X PUT -H \"$AUTH_HEADER\" \"https://gitlab.cee.redhat.com/api/v4/projects/$URI_ENCODED_PATH/merge_requests/$IID/merge\""
         fi
         printf "\nCMD to merge MR:\n"
         echo "CMD>: "$MERGE_CMD
@@ -526,7 +613,7 @@ merge_mr() {
 check_pipeline_runs() {
     if [ "$TEST" == "false" ]; then
         # Get release object for
-        COUNT=60
+        COUNT=180
         EXIT_STATUS=-1
         echo "Obtaining Release Object"
         while [ $EXIT_STATUS -ne 0 ]; do
@@ -560,7 +647,7 @@ check_pipeline_runs() {
  
     REASON="Running"
 
-    printf "Monitoring Pipeline Run\n"
+    printf "\nMonitoring Pipeline Run\n"
     while [ "$REASON" == "Running" ]; do
         printf "*"
         REASON=$(kubectl --kubeconfig=$KONFLUX_KUBECONFIG get pipelineruns -n $NAMESPACE $PIPELINE_RUN -o custom-columns=:.status.conditions[0].reason --no-headers 2>&1)
@@ -579,7 +666,7 @@ check_pipeline_runs() {
         echo "ERROR: Release Pipeline FAILED: Check logs Namespace: $NAMESPACE PipelineRun: $PIPELINE_RUN"
         exit 1
     else
-        echo -e "Release Pipeline Run '$PIPELINE_RUN' in Namespace '$NAMESPACE' Succeeded\n"
+        echo -e "Release Pipeline Run '$PIPELINE_RUN' in Namespace '$NAMESPACE' Succeeded"
     fi 
 }
 
@@ -592,7 +679,7 @@ check_for_image() {
 
     COUNT=60
     EXIT_STATUS=-1
-    echo "Checking for image in registry"
+    echo -e "\nChecking for image in registry"
     while [ $EXIT_STATUS -ne 0 ]; do
         IMAGE=$(podman inspect registry.redhat.io/rhtap-cli/rhtap-cli-rhel9:$CHECK_VERSION)
         EXIT_STATUS=$?
@@ -626,7 +713,10 @@ update_stream() {
     BRANCH_DIR="$PREFIX-stream"
 
     # Create branch
-    create_branch
+    if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "branch" ]]; then
+        create_branch
+        START_CMD="all"
+    fi
 
     # Create tmp working directory
     mkdir /tmp/$BRANCH_DIR
@@ -638,19 +728,29 @@ update_stream() {
         # Clone branch
         clone_branch
 
-        update_files
+        if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "update" ]]; then
+            update_files
+            START_CMD="all"
+        fi
 
-        run_build_manifests
+        if [[ "${START_CMD}" == "all" ]]; then
+            run_build_manifests
+        fi
 
-        get_changes
+        if [[ "${START_CMD}" == "all" ]]; then
+            get_changes
+        fi
     else
         if [[ "$dry_run" == "true" ]]; then
             # Dry run print command
-            printf "\nCMD to clone branch '$BRANCH' from repository '$GITLAB_ORG/$REPOSITORY'\n"
+            cmd="git clone --quiet -b $BRANCH https://$AUTH_HEADER@gitlab.cee.redhat.com/$GITLAB_ORG/$REPOSITORY.git /tmp/$BRANCH_DIR 2>&1"
+            printf "CMD to clone branch '$BRANCH' from repository '$GITLAB_ORG/$REPOSITORY'\n"
             echo -e "CMD>: $cmd"
         else
-            echo "Error: Unable to clone '$BRANCH',  $BRANCH in $GITLAB_ORG/$REPOSITORY.git may not exist"
-            exit 1
+            if [[ "${START_CMD}" != "check" ]] && [[ "${START_CMD}" != "check_image" ]]; then
+                echo "Error: Unable to clone '$BRANCH',  $BRANCH in $GITLAB_ORG/$REPOSITORY.git may not exist"
+                exit 1
+            fi
         fi
     fi
 
@@ -659,34 +759,46 @@ update_stream() {
 
     build_commit_cmd
 
-    run_commit_cmd
+    if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "commit" ]]; then
+        run_commit_cmd
+        START_CMD="all"
+    fi
 
-    create_mr
+    if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "mr" ]]; then
+        create_mr
+        START_CMD="all"
+    fi
 
-    merge_mr
+    if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "merge" ]]; then
+        merge_mr
+        START_CMD="all"
+    fi
 
     # Check for application
     if [[ "$dry_run" == "false" ]]; then
-        COUNT=60
-        EXIT_STATUS=-1
-        echo "Checking Application rhtap-cli-$MOD_VERSION created"
-        while [ $EXIT_STATUS -ne 0 ]; do
-            if [ "$TEST" == "true" ]; then
-                APP_NAME=$(kubectl --kubeconfig=$KONFLUX_KUBECONFIG get application rhtap-cli-$TEST_MOD_VERSION -o custom-columns=:.metadata.name --no-headers 2>&1)
-            else 
-                APP_NAME=$(kubectl --kubeconfig=$KONFLUX_KUBECONFIG get application rhtap-cli-$MOD_VERSION -o custom-columns=:.metadata.name --no-headers 2>&1)
-            fi
-            EXIT_STATUS=$?
+        if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "check" ]]; then
+            COUNT=60
+            EXIT_STATUS=-1
+            echo -e "\nChecking Application rhtap-cli-$MOD_VERSION created"
+            while [ $EXIT_STATUS -ne 0 ]; do
+                if [ "$TEST" == "true" ]; then
+                    APP_NAME=$(kubectl --kubeconfig=$KONFLUX_KUBECONFIG get application rhtap-cli-$TEST_MOD_VERSION -o custom-columns=:.metadata.name --no-headers 2>&1)
+                else
+                    APP_NAME=$(kubectl --kubeconfig=$KONFLUX_KUBECONFIG get application rhtap-cli-$MOD_VERSION -o custom-columns=:.metadata.name --no-headers 2>&1)
+                fi
+                EXIT_STATUS=$?
 
-            ((COUNT--))
-            sleep 10
+                ((COUNT--))
+                sleep 10
 
-            if [ $COUNT -eq 0 ]; then
-                echo "ERROR: Application rhtap-cli-$MOD_VERSION not present in konflux - $APP_NAME"
-                exit 1
-            fi
-        done
-        echo -e "Application rhtap-cli-$MOD_VERSION created - SUCCESSFUL"
+                if [ $COUNT -eq 0 ]; then
+                    echo "ERROR: Application rhtap-cli-$MOD_VERSION not present in konflux - $APP_NAME"
+                    exit 1
+                fi
+            done
+           echo -e "Application rhtap-cli-$MOD_VERSION created - SUCCESSFUL"
+           START_CMD="all"
+        fi
     fi
 }
 
@@ -708,7 +820,10 @@ update_rpa() {
     mkdir /tmp/$BRANCH_DIR
 
     # Create branch
-    create_branch
+    if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "branch" ]]; then
+        create_branch
+        START_CMD="all"
+    fi
 
     # Check for branch
     res=$(eval "$GET_BRANCH_CMD")
@@ -718,17 +833,25 @@ update_rpa() {
         # Clone branch
         clone_branch
 
-        update_files
+        if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "update" ]]; then
+            update_files
+            START_CMD="all"
+        fi
 
-        get_changes
+        if [[ "${START_CMD}" == "all" ]]; then
+            get_changes
+        fi
     else
         if [[ "$dry_run" == "true" ]]; then
             # Dry run print command
-            printf "\nCMD to clone branch '$BRANCH' from repository '$GITLAB_ORG/$REPOSITORY'\n"
+            cmd="git clone --quiet -b $BRANCH https://$AUTH_HEADER@gitlab.cee.redhat.com/$GITLAB_ORG/$REPOSITORY.git /tmp/$BRANCH_DIR 2>&1"
+            printf "CMD to clone branch '$BRANCH' from repository '$GITLAB_ORG/$REPOSITORY'\n"
             echo -e "CMD>: $cmd"
         else
-            echo "Error: Unable to clone '$BRANCH',  $BRANCH in $GITLAB_ORG/$REPOSITORY.git may not exist"
-            exit 1
+            if [[ "${START_CMD}" != "check" ]] && [[ "${START_CMD}" != "check_image" ]]; then
+                echo "Error: Unable to clone '$BRANCH',  $BRANCH in $GITLAB_ORG/$REPOSITORY.git may not exist"
+                exit 1
+            fi
         fi
     fi
 
@@ -737,15 +860,31 @@ update_rpa() {
 
     build_commit_cmd
 
-    run_commit_cmd
+    if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "commit" ]]; then
+        run_commit_cmd
+        START_CMD="all"
+    fi
 
-    create_mr
+    if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "mr" ]]; then
+        create_mr
+        START_CMD="all"
+    fi
 
-    merge_mr
+    if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "merge" ]]; then
+        merge_mr
+        START_CMD="all"
+    fi
 
     if [[ "$dry_run" == "false" ]]; then 
-        check_pipeline_runs
-        check_for_image
+        if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "check" ]]; then
+            check_pipeline_runs
+            START_CMD="all"
+        fi
+
+        if [[ "${START_CMD}" == "all" ]] || [[ "${START_CMD}" == "check_image" ]]; then
+            check_for_image
+            START_CMD="all"
+        fi
     fi
 }
 

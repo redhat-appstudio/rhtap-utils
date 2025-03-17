@@ -1,6 +1,6 @@
 # RHTAP-CLI release
 
-Consists of two scripts (rhtap-cli-release.sh and rhtap-cli-konflox.sh) that automate the
+Consists of two scripts (rhtap-cli-release.sh and rhtap-cli-konflux.sh) that automate the
 creation of a new release branch, update files that contain release specific information,
 and creates and releases the image through konflux.
 
@@ -68,7 +68,6 @@ VERSION required to be supplied as input `See Syntax`
 ### Syntax
 ```console
 user@machine:~$ ./rhtap-cli-konflux.sh -h
-./rhtap-cli-konflux.sh -h
 
 ./rhtap-cli-konflux.sh - Automates the release process of a new rhtap-cli
      version through konflux by updating rhtap-cli-stream and
@@ -87,7 +86,8 @@ options:
 -r, --repository=REPOSITORY Specify a repository, Default: konflux-release-data
 -s, --steps=STEPS           Specify a comma separated list of steps, Valid: (stream,rpa,all) Default: all
 -v, --version=VERSION       Specify version of release as #.# (ex. 1.4), Required
-
+-c, --command=START_CMD     Specify command to start first step at. Used for rerun after failure.
+                                   Valid: (branch,update,commit,mr,merge,check,check_image) Default: all
 ```
 ### Execution
 1. Set environment variables `GITHUB_ORG_TOKEN` and `KONFLUX_KUBECONFIG`
