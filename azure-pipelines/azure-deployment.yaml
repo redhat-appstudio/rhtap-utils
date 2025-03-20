@@ -18,13 +18,14 @@ spec:
       containers:
         - name: azure-build-agent
           image: azure-build-agent:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           envFrom:
           - secretRef:
               name: azdevops
           ports:
           - containerPort: 8080
           securityContext:
+            privileged: true
             runAsUser: 1001
       serviceAccount: azure-build-sa
       serviceAccountName: azure-build-sa
