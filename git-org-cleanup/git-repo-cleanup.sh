@@ -18,7 +18,7 @@ cutoff_time=$((now - 14 * 24 * 60 * 60))
 repo_name_regex="^[0-9a-z]{9}-(python|dotnet-basic|java-quarkus|go|nodejs|java-springboot)"
 
 # Fetch the list of repositories from GitHub API
-repos=$(curl -s -X GET -H "$AUTH_HEADER" "https://api.github.com/orgs/$GITHUB_ORG/repos?per_page=100")
+repos=$(curl -s -X GET -H "$AUTH_HEADER" "https://api.github.com/orgs/$GITHUB_ORG/repos?per_page=100&sort=name")
 if [ "$(echo $repos | jq -r .status 2>/dev/null)" ]; then
     echo "Error Fetching repositories '$repos' "
     exit 1
