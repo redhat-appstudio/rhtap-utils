@@ -12,6 +12,7 @@ if [ -z "$AZP_TOKEN_FILE" ]; then
     exit 1
   fi
 
+  mkdir -p /opt/app-root/app/
   AZP_TOKEN_FILE=/opt/app-root/app/.token
   echo -n "$AZP_TOKEN" > "$AZP_TOKEN_FILE"
 fi
