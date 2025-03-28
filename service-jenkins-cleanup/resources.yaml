@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rhtap-cleanup
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: service-cluster-creds
+  namespace: rhtap-cleanup
+type: Opaque
+stringData:
+  jenkins-api-token: <JENKINS_API_TOKEN> # Replace with user's api token
+  jenkins-username: <JENKINS_USERNAME>  # Replace with user name
+  jenkins-url: <JENKINS_URL> # Replace with Jenkins api url
+  cluster_user: <SERVICE_CLUSTER_USER> # Replace with a cluster admin user to login as
+  cluster_password: <SERVICE_CLUSTER_PASSWORD> # Replace with user's password
+  cluster_url: <SERVICE_CLUSTER_URL> # Replace with service cluster url
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: periodic-jenkins-cleanup
+  namespace: rhtap-cleanup
+spec:
+  schedule: "0 7 * * 6" # every Saturday at 7:00 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: jenkins-cleanup
+              image: quay.io/konflux-ci/appstudio-utils:latest
+              imagePullPolicy: Always
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  curl -o /tmp/service-jenkins-cleanup.sh https://raw.githubusercontent.com/redhat-appstudio/rhtap-utils/refs/heads/main/service-jenkins-cleanup/service-jenkins-cleanup.sh && \
+                  chmod +x /tmp/service-jenkins-cleanup.sh && \
+                  ./tmp/service-jenkins-cleanup.sh
+              env:
+                - name: JENKINS_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: rhtap-cli-install
+                      key: jenkins-username
+                - name: JENKINS_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: rhtap-cli-install
+                      key: jenkins-api-token
+                - name: JENKINS_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: rhtap-cli-install
+                      key: jenkins-url
+                - name: SERVICE_CLUSTER_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: service-cluster-creds
+                      key: cluster_user 
+                - name: SERVICE_CLUSTER_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: service-cluster-creds
+                      key: cluster_url
+                - name: SERVICE_CLUSTER_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: service-cluster-creds
+                      key: cluster_password
+              securityContext:
+                runAsNonRoot: true
+          restartPolicy: Never
