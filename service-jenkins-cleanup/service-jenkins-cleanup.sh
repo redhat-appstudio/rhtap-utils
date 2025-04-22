@@ -3,39 +3,30 @@
 # Set dry_run to true for not deleting jenkins job directories, it will provide list of directories/job to delete
 dry_run="${dry_run:-true}"
 
-# Set verbose add info displayed
-VERBOSE="${verbose:-false}"
-
 # Last modification should be old than this number of DAYS
 DAYS="${DAYS:-14}"
 
-# Set SERVICE_CLUSTER_URL, SERVICE_CLUSTER_USRE, SERVICE_CLUSTER_PASSWORD and KUBECONFIG
-export CLUSTER_URL="${SERVICE_CLUSTER_URL:-https://api.rhtap-services.xmdt.p3.openshiftapps.com:443}"
-export CLUSTER_PASSWORD="${SERVICE_CLUSTER_PASSWORD}"
-export CLUSTER_USER="${SERVICE_CLUSTER_USER:-cluster-admin}"
+# Set JENINS_API_TOKEN, JENKINS_URL and JENKINS_USERNAME
 export JENKINS_API_TOKEN="${JENKINS_API_TOKEN}"
 export JENKINS_URL="${JENKINS_URL:-https://jenkins-jenkins.apps.rosa.rhtap-services.xmdt.p3.openshiftapps.com}"
 export JENKINS_USERNAME="${JENKINS_USERNAME:-cluster-admin-admin-edit-view}"
-export KUBECONFIG=/tmp/.kube/config
 
 help_text() {
     echo " "
-    echo "$0 - Cleans up old job directories that have not been updated"
+    echo "$0 - Cleans up old job directories that have no builds that have run "
     echo "     in X number of days"
     echo " "
     echo "$0 [options]"
     echo " "
-    echo "Note: Environment variables SERVICE_CLUSTER_PASSWORD and JENKINS_API_TOKEN are required to be set."
-    echo "      Must set environment variables JENKINS_USERNAME, JENKINS_URL, SERVICE_CLUSTER_USER and SERVICE_CLUSTER_URL"
-    echo "           if not using defaults of 'cluster-admin-admin-edit-view',"
-    echo "           'https://jenkins-jenkins.apps.rosa.rhtap-services.xmdt.p3.openshiftapps.com', 'cluster-admin' and"
-    echo "           'https://api.rhtap-services.xmdt.p3.openshiftapps.com:443'" 
+    echo "Note: Environment variables JENKINS_API_TOKEN is required to be set."
+    echo "      Must set environment variables JENKINS_USERNAME and JENKINS_URL "
+    echo "           if not using defaults of 'cluster-admin-admin-edit-view' and"
+    echo "           'https://jenkins-jenkins.apps.rosa.rhtap-services.xmdt.p3.openshiftapps.com'"
     echo " "
     echo "options:"
     echo "-h, --help                  Show brief help"
     echo "-d, --dry_run=dry_run       No actions actually performed, List of directories to remove. Valid values ['true', 'false'] Default: true"
     echo "-o, --older=DAYS            Specify number of days old directories last modified, Default: 14"
-    echo "-v, --verbose               Will output info about skipping directories that sub-diretory has been modified. Default: false"
 }
 
 short_opt() {
@@ -76,10 +67,6 @@ verify_syntax() {
           long_opt "DAYS" $@
           shift
           ;;
-        -v|--verbose)
-          shift
-          VERBOSE=true
-          ;;
         -d)
           short_opt "dry_run" $@
           shift 2
@@ -102,120 +89,127 @@ verify_syntax() {
     fi
 
     # Verify creds specified
-    if [[ -z "${CLUSTER_PASSWORD}" ]]; then
-        echo "ERROR: SERVICE_CLUSTER_PASSWORD must be set."
-        exit 1
-    fi
-
     if [[ -z "${JENKINS_API_TOKEN}" ]]; then
         echo "ERROR: JENKINS_API_TOKEN must be set."
         exit 1
     fi
 }
 
-get_jenkins_pod() {
-    # Get running Jenkins pod
-    jenkins_pod=`kubectl get pod -n jenkins -l name=jenkins --field-selector status.phase=Running -o jsonpath="{.items[0].metadata.name}"`
-    if [ $? != 0 ]; then
-        echo "Error: Unable to obtain running jenkins pod"
-        exit 1
-    fi
-}
+process_list() {
+    # Setup  local vars
+    local CLASS
+    local NAME
+    local URL
+    local ITEMS
+    local i
 
+    # Get number of items in list
+    ITEMS="$(echo "$1" | jq length)"
 
-run_cmd_on_pod() {
-    cmd_results=""
+    # Process each item and handle as directory or workflow
+    i=0
+    while read item; do
+        i=$((i+1))
 
-    retries=4
-    delay=300
+        CLASS=$(echo $item | jq -r '._class' 2>/dev/null)
+        NAME=$(echo $item | jq -r '.name' 2>/dev/null)
+        URL=$(echo $item | jq -r '.url' 2>/dev/null)
 
-    while [ $retries -gt 0 ]; do
-        cmd_results=$(kubectl exec --namespace=jenkins ${jenkins_pod} -- bash -c "${CMD}")
-        if [ $? -eq 0 ]; then
-            break # Exit loop if successful
+        if [ "$CLASS" == "com.cloudbees.hudson.plugins.folder.Folder" ]; then
+            # Process folders
+            DELETE_FOLDER="true"
+            LAST_MOD=0
+            process_folder "${URL}"
+            if ( "$DELETE_FOLDER" == "true" ); then
+                if [[ "$dry_run" == "false" ]]; then
+                    MOD_DATE=`TZ=UTC date -d @"$((LAST_MOD/1000))"`
+                    printf "%-10s %-60s %-40s\n" "Deleting" "${NAME}" "${MOD_DATE}"
+                    curl -s -X POST -u "$JENKINS_USERNAME:$JENKINS_API_TOKEN" "${URL}doDelete"
+                else
+                    MOD_DATE=`TZ=UTC date -d @"$((LAST_MOD/1000))"`
+                    printf "%-10s %-60s %-40s\n" "Delete" "${NAME}" "${MOD_DATE}"
+                fi
+            fi
+        elif [ "$CLASS" == "org.jenkinsci.plugins.workflow.job.WorkflowJob" ]; then
+            # Process workflow Job
+            process_workflow "${URL}"
+        elif [ "$CLASS" == "hudson.model.FreeStyleProject" ]; then
+            # Process Free Style Job
+            process_workflow "${URL}"
         else
-            echo "WARNING: Command failed, retrying in $delay seconds..."
-            sleep $delay
-            retries=$((retries - 1))
+            echo "WARNING: Unhandled CLASS ${CLASS}"
         fi
-    done
 
-    if [ $retries -eq 0 ]; then
-        echo "ERROR: Failed to run '$CMD' on $jenkins_pod after multiple retries."
-        exit 1
-    fi
+    done < <(echo $1 | jq -c '.[]')
 }
 
+process_folder() {
+    local sub_dirs
+
+    # Get list of entries in directory and process
+    sub_dirs=`curl -s --globoff -X POST -L -u "$JENKINS_USERNAME:$JENKINS_API_TOKEN" ${1}api/json?tree=jobs[name,url] | jq -r .jobs`
+
+    local ITEMS
+    ITEMS="$(echo "$sub_dirs" | jq length)"
+
+    # If empty dir/folder - Do not delete
+    if [ "${ITEMS}" == "0" ]; then
+        # echo "Skipping - Empty folder/dir"
+        DELETE_FOLDER="false"
+        return
+    fi
+
+    process_list "${sub_dirs}"
+}
+
+process_workflow() {
+    local build_list
+    local j
+
+    # Get list of builds and their timestamp
+    build_list=`curl -s -X POST -L -u "$JENKINS_USERNAME:$JENKINS_API_TOKEN" $1/api/json?tree=builds[number,timestamp] --globoff | jq -r .builds`
+
+    local ITEMS
+    ITEMS="$(echo "$build_list" | jq length)"
+
+    # If no builds skip directory - Do not delete
+    if [ "${ITEMS}" == "0" ]; then
+        # echo "Skipping - no builds"
+        DELETE_FOLDER="false"
+        return
+    fi
+
+    j=0
+    # Loop through builds and if no recent builds mark for deletion
+    while read build_item; do
+        j=$((j+1))
+
+        BUILD=$(echo $build_item | jq -r '.number' 2>/dev/null)
+        TIMESTAMP=$(echo $build_item | jq -r '.timestamp' 2>/dev/null)
+
+        if (( TIMESTAMP > CHECK_DATE )); then
+            DELETE_FOLDER="false"
+            break
+        fi
+
+        if (( TIMESTAMP > LAST_MOD )); then
+            LAST_MOD=$TIMESTAMP
+        fi
+    done < <(echo $build_list | jq -c '.[]')
+}
 
 verify_syntax $@
 
 echo "dry_run    : ${dry_run}"
-echo "verbose    : ${VERBOSE}"
 echo "DAYS       : ${DAYS}"
 echo " "
 
-# Create temp KUEBCONFIG file
-mkdir /tmp/.kube
-if [ $? != 0 ]; then
-    echo "Error: Failed to create directory"
-    exit 1
-fi
+# Set check date/time
+CHECK_DATE=`date -d "-${DAYS} days" +%s%3N`
 
-touch $KUBECONFIG
-if [ $? != 0 ]; then
-    echo "Error: Failed to create KUBECONFIG file - $KUBECONFIG"
-    exit 1
-fi
+# Get list of top level entries in directory
+dir_list=`curl -s --globoff -X POST -L -u "$JENKINS_USERNAME:$JENKINS_API_TOKEN" "${JENKINS_URL}/api/json?tree=jobs[name,url]" | jq -r .jobs`
 
-# Logon to service cluster
-oc login $CLUSTER_URL --username $CLUSTER_USER --password $CLUSTER_PASSWORD
-if [ $? != 0 ]; then
-    echo "Error: Unable to login to SERVICE CLUSTER: ${CLUSTER_URL}"
-    exit 1
-fi
-
-get_jenkins_pod
-echo " "
-echo -e "Jenkins Pod: $jenkins_pod\n"
-
-# Get list of top level jobs directories that have not been modified in over X number of days
-CMD='find ${JENKINS_HOME}/jobs -maxdepth 1 -type d -mtime +'${DAYS}' -print'
-run_cmd_on_pod
-mapfile -d ' ' dir_list < <(printf "$cmd_results")
-
-# Go though and make sure no subdirectories have ben modified.
-for check_dir in ${dir_list[@]}; do
-    CMD="find ${check_dir} -type d -mtime -${DAYS} -print"
-    run_cmd_on_pod
-    mapfile -d ' ' check_list < <(printf "$cmd_results")
- 
-    JOB_NAME=$(basename "$check_dir")
-    JOB_URL="$JENKINS_URL/job/$JOB_NAME/"
-
-    # Check if updates
-    if [ ${#check_list[@]} == 0 ]; then
-        # No updates delete dir
-        if [[ "$dry_run" != "true" ]]; then
-
-            echo "Deleting $JOB_NAME"
-
-            curl -s -X POST -u "$JENKINS_USERNAME:$JENKINS_API_TOKEN" "${JOB_URL}doDelete"
-        else
-            CMD="stat -c '%.19y' ${check_dir}"
-            run_cmd_on_pod
-            echo -e "Delete $JOB_NAME\t ${cmd_results}"
-        fi
-        echo " "
-    else
-        if [[ "$VERBOSE" == "true" ]]; then
-            echo "Skipping $JOB_NAME - Subdirectories have recently been modified:"
-            for sub_dir in ${check_list[@]}; do
-                CMD="stat -c '%.19y' ${sub_dir}"
-                run_cmd_on_pod
-                echo -e "    ${sub_dir}\t ${cmd_results}"
-            done
-            echo " "
-        fi
-    fi
-done
+# Process entries in list searching for directories that do not have builds that have run in X number of days
+process_list "${dir_list}"
 
