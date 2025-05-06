@@ -3,8 +3,18 @@
 # Set dry_run to true for not deleting jenkins job directories, it will provide list of directories/job to delete
 dry_run="${dry_run:-true}"
 
+# Set verbose add info displayed
+VERBOSE="${verbose:-false}"
+
+# Set Deletion of empty folders and jobs with no builds
+EMPTY_FOLDERS="${empty_folders:-false}"
+NO_BUILDS="${no_builds:-false}"
+
 # Last modification should be old than this number of DAYS
 DAYS="${DAYS:-14}"
+
+# Indent to line output
+INDENT=""
 
 # Set JENINS_API_TOKEN, JENKINS_URL and JENKINS_USERNAME
 export JENKINS_API_TOKEN="${JENKINS_API_TOKEN}"
@@ -27,6 +37,9 @@ help_text() {
     echo "-h, --help                  Show brief help"
     echo "-d, --dry_run=dry_run       No actions actually performed, List of directories to remove. Valid values ['true', 'false'] Default: true"
     echo "-o, --older=DAYS            Specify number of days old directories last modified, Default: 14"
+    echo "-e, --empty_folders         Delete empty folders. Default: false"
+    echo "-n, --no_builds             Delete if contains no builds. Default: false"
+    echo "-v, --verbose               Will output verbose info about processing. Default: false"
 }
 
 short_opt() {
@@ -75,6 +88,18 @@ verify_syntax() {
           long_opt "dry_run" $@
           shift
           ;;
+        -e|--empty_folders)
+          shift
+          EMPTY_FOLDERS=true
+          ;;
+        -n|--no_builds)
+          shift
+          NO_BUILDS=true
+          ;;
+        -v|--verbose)
+          shift
+          VERBOSE=true
+          ;;
         *)
           echo "Error: Invalid command syntax"
           help_text
@@ -95,6 +120,37 @@ verify_syntax() {
     fi
 }
 
+item_cleanup() {
+    # If NO_BUILDS set, Force deletion if no builds by setting BUILDS to true
+    if [ "${FOLDER}" != "true" ] && [ "${NO_BUILDS}" == "true" ] && [ "${BUILDS}" == "false" ]; then
+        BUILDS="true"
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "${INDENT}No Builds - Flag set deleting"
+            echo " "
+        fi
+    fi
+
+    # Clean up item according to settings
+    if [ "$DELETE_FOLDER" == "true" ] && ([ "$BUILDS" == "true" ] || [ "$FOLDER" == "true" ]); then
+        if [ "$LAST_MOD" == "0" ]; then
+            MOD_DATE=""
+        else
+            MOD_DATE=`TZ=UTC date -d @"$((LAST_MOD/1000))"`
+        fi
+        if [[ "$dry_run" == "false" ]]; then
+            printf "%-10s %-60s %-40s\n" "Deleting" "${NAME}" "${MOD_DATE}"
+            curl -s -X POST -u "$JENKINS_USERNAME:$JENKINS_API_TOKEN" "${URL}doDelete"
+        else
+           printf "%-10s %-60s %-40s\n" "Delete" "${NAME}" "${MOD_DATE}"
+        fi
+    else
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "${INDENT}Skipping $NAME"
+            echo " "
+        fi
+    fi
+}
+
 process_list() {
     # Setup  local vars
     local CLASS
@@ -106,6 +162,10 @@ process_list() {
     # Get number of items in list
     ITEMS="$(echo "$1" | jq length)"
 
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "${INDENT}ITEMS: $ITEMS"
+    fi
+
     # Process each item and handle as directory or workflow
     i=0
     while read item; do
@@ -115,29 +175,49 @@ process_list() {
         NAME=$(echo $item | jq -r '.name' 2>/dev/null)
         URL=$(echo $item | jq -r '.url' 2>/dev/null)
 
+        if [ "${INDENT}" == "" ]; then
+            DELETE_FOLDER="true"
+            BUILDS="false"
+            FOLDER="false"
+            LAST_MOD=0
+        fi
+
         if [ "$CLASS" == "com.cloudbees.hudson.plugins.folder.Folder" ]; then
             # Process folders
-            DELETE_FOLDER="true"
-            LAST_MOD=0
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "${INDENT}--- Processing item $i Folder $NAME ---"
+            fi
             process_folder "${URL}"
-            if ( "$DELETE_FOLDER" == "true" ); then
-                if [[ "$dry_run" == "false" ]]; then
-                    MOD_DATE=`TZ=UTC date -d @"$((LAST_MOD/1000))"`
-                    printf "%-10s %-60s %-40s\n" "Deleting" "${NAME}" "${MOD_DATE}"
-                    curl -s -X POST -u "$JENKINS_USERNAME:$JENKINS_API_TOKEN" "${URL}doDelete"
-                else
-                    MOD_DATE=`TZ=UTC date -d @"$((LAST_MOD/1000))"`
-                    printf "%-10s %-60s %-40s\n" "Delete" "${NAME}" "${MOD_DATE}"
-                fi
+            if [ "${INDENT}" == "      " ]; then
+                item_cleanup
             fi
         elif [ "$CLASS" == "org.jenkinsci.plugins.workflow.job.WorkflowJob" ]; then
             # Process workflow Job
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "${INDENT}--- Processing item $i Job $NAME"
+                echo " "
+            fi
             process_workflow "${URL}"
+            if [ "${INDENT}" == "      " ]; then
+                item_cleanup
+            fi
         elif [ "$CLASS" == "hudson.model.FreeStyleProject" ]; then
             # Process Free Style Job
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "${INDENT}--- Processing item $i Job $NAME"
+                echo " "
+            fi
             process_workflow "${URL}"
+            if [ "${INDENT}" == "      " ]; then
+                item_cleanup
+            fi
         else
-            echo "WARNING: Unhandled CLASS ${CLASS}"
+            echo "${INDENT}WARNING: Unhandled CLASS ${CLASS}"
+        fi
+
+        INDENT=${INDENT::-6}
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo ""
         fi
 
     done < <(echo $1 | jq -c '.[]')
@@ -145,6 +225,7 @@ process_list() {
 
 process_folder() {
     local sub_dirs
+    INDENT="${INDENT}      "
 
     # Get list of entries in directory and process
     sub_dirs=`curl -s --globoff -X POST -L -u "$JENKINS_USERNAME:$JENKINS_API_TOKEN" ${1}api/json?tree=jobs[name,url] | jq -r .jobs`
@@ -154,17 +235,26 @@ process_folder() {
 
     # If empty dir/folder - Do not delete
     if [ "${ITEMS}" == "0" ]; then
-        # echo "Skipping - Empty folder/dir"
-        DELETE_FOLDER="false"
+        if [[ "$EMPTY_FOLDERS" == "true" ]]; then
+            FOLDER="true"
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "${INDENT}Deleting - Empty folder"
+            fi
+        else
+            DELETE_FOLDER="false"
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "${INDENT}Skipping - Empty folder"
+            fi
+        fi
         return
     fi
-
     process_list "${sub_dirs}"
 }
 
 process_workflow() {
     local build_list
     local j
+    INDENT="${INDENT}      "
 
     # Get list of builds and their timestamp
     build_list=`curl -s -X POST -L -u "$JENKINS_USERNAME:$JENKINS_API_TOKEN" $1/api/json?tree=builds[number,timestamp] --globoff | jq -r .builds`
@@ -173,14 +263,17 @@ process_workflow() {
     ITEMS="$(echo "$build_list" | jq length)"
 
     # If no builds skip directory - Do not delete
-    if [ "${ITEMS}" == "0" ]; then
-        # echo "Skipping - no builds"
-        DELETE_FOLDER="false"
+    if [ "${ITEMS}" == "0" ] && [ "${BUILDS}"  != "true" ]; then
+        BUILDS="false"
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "${INDENT}No Builds"
+        fi
         return
     fi
 
     j=0
     # Loop through builds and if no recent builds mark for deletion
+    BUILDS="true"
     while read build_item; do
         j=$((j+1))
 
@@ -189,6 +282,9 @@ process_workflow() {
 
         if (( TIMESTAMP > CHECK_DATE )); then
             DELETE_FOLDER="false"
+            if [[ "$VERBOSE" == "true" ]]; then
+                echo "${INDENT}Skipping - Build has recently run"
+            fi
             break
         fi
 
@@ -200,8 +296,11 @@ process_workflow() {
 
 verify_syntax $@
 
-echo "dry_run    : ${dry_run}"
-echo "DAYS       : ${DAYS}"
+echo "dry_run       : ${dry_run}"
+echo "DAYS          : ${DAYS}"
+echo "EMPTY_FOLDERS : ${EMPTY_FOLDERS}"
+echo "NO_BUILDS     : ${NO_BUILDS}"
+echo "VERBOSE       : ${VERBOSE}"
 echo " "
 
 # Set check date/time
