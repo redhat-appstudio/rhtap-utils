@@ -1,8 +1,32 @@
 # RHTAP Service Cluster Jenkins Cleanup
 
-Cleaning up Jenkins job directories created from test which have no builds run in the past X number
-of days (Default: 14). The script has option to dry run for getting the list of directories that will be deleted without deleting them.
+Cleaning up Jenkins job directories created from testing which have no builds run in the past X number
+of days (Default: 14). The script has option to dry run for getting list of items that will be deleted without deleting them.
+Options exits to force deleting of empty folders, items with no builds and to set number of days. See syntax below.
 
+### Syntax
+```console
+user@machine:~$ ./service-jenkins-cleanup.sh -h
+
+./service-jenkins-cleanup.sh - Cleans up old job directories that have no builds that have run
+     in X number of days
+
+./service-jenkins-cleanup.sh [options]
+
+Note: Environment variables JENKINS_API_TOKEN is required to be set.
+      Must set environment variables JENKINS_USERNAME and JENKINS_URL
+           if not using defaults of 'cluster-admin-admin-edit-view' and
+           'https://jenkins-jenkins.apps.rosa.rhtap-services.xmdt.p3.openshiftapps.com'
+
+options:
+-h, --help                  Show brief help
+-d, --dry_run=dry_run       No actions actually performed, List of directories to remove. Valid values ['true', 'false'] Default: true
+-o, --older=DAYS            Specify number of days old directories last modified, Default: 14
+-e, --empty_folders         Delete empty folders. Default: false
+-n, --no_builds             Delete if contains no builds. Default: false
+-v, --verbose               Will output verbose info about processing. Default: false
+
+```
 ### Manual Cleanup
 
 1. Set environment variable `JENKINS_API_TOKEN`
