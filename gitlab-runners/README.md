@@ -56,19 +56,6 @@ $ oc apply -f gitlab-runner-secret.yml
 $oc apply -f gitlab-runner.yml
 ```
 
-
-
-<!-- 
-3. Create Runner in GitLab.com:
-
-* Login to https://gitlab.com, on the left sidebar, select `Groups`.
-* Select a Group that you want to configure Gitlab Runner
-* Select `Build` -> `Runner` on the left sidebar
-* Click on `Create Group runner`, Tick on `Run untagged jobs`, 
-* Click on `Create runner` and copy token from code snippet - something like "glrt-.....".
-
-3. Replace runner token in gitlab-runner-secret.yml and apply:  
-
-```
-$ oc apply -f gitlab-runner-secret.yml   
-``` -->
+4. Go to https://gitlab.com, Select the group you that you configured Gitlab Runner
+5. on the left sidebar, select `Settings` --> `CI/CD`
+6. Expand `Runners` and only enable the 3rd option `Allow members of projects and groups to create runners with runner registration tokens`
