@@ -2,55 +2,39 @@
 
 The default runner has CI/CD minute limits on the Free tier of GitLab.com, for more detail, you can refer to this link https://about.gitlab.com/blog/2020/09/01/ci-minutes-update-free-users/. To avoid that limit, we use self-managed runners on Red Hat OpenShift v4.
 
+
+## Install `Gitlab Runner` operator
+
 1. Create namespace: 
 
 ```
 $ oc new-project gitlab-runner
 ```
 
-2. Install `GitLab Runner` operator in cluster in namespace gitlab-runner
+2. Install `GitLab Runner` operator in cluster in namespace `gitlab-runner`
 
+## Preparation for Gitlab Runner 
 
-3. Create Runner in GitLab.com:
-
-* Login to https://gitlab.com, on the left sidebar, select `Groups`.
-* Select a Group that you want to configure Gitlab Runner
-* Select `Build` -> `Runner` on the left sidebar
-* Click on `Create Group runner`, Tick on `Run untagged jobs`, 
-* Click on `Create runner` and copy token from code snippet - something like "glrt-.....".
-
-3. Replace runner token in gitlab-runner-secret.yml and apply:  
-
-```
-$ oc apply -f gitlab-runner-secret.yml   
-```
-
-4. Create service account: 
+1. Create service account: 
 ```
 oc apply -f gitlab-ci-sa.yml 
 ```
 
-5. Create SCC for service account: 
+2. Create SCC for service account: 
 
 ```
 $ oc apply -f gitlab-ci-sa-scc.yml 
 ```
 
-6. Create custom config for runner: 
+3. Create custom config for runner: 
 
 ```
 $oc create configmap custom-config-toml --from-file config.toml=custom-config-gitlab-ci.toml -n gitlab-runner
 ```
 
-7. Create CRD for runners: 
+The above steps are one time, once they are ready, you can following up the following steps to create your own Gitlab Runner
 
-```
-$oc apply -f gitlab-runner.yml
-```
-
-# Confgure your own Gitlab Account sharing with the installed self-managed runners
-
-Once we installed a self-managed runners on OpenShif by refering to [Setting up self-managed runners on OpenShift](#setting-up-self-managed-runners-on-openshift). You also can configure your Gitlab Account to share the same self-managed runners.
+# Configure your own Runner
 
 1. Create Runner in GitLab.com:
 
@@ -63,7 +47,28 @@ Once we installed a self-managed runners on OpenShif by refering to [Setting up 
 2. Make a copy of gitlab-runner-secret.yml with *difference* secret name, replace runner token that you get in step `1. Create Runner in GitLab.com:` and apply
 
 ```
-$ oc apply -f gitlab-runner-new-secret.yml   
+$ oc apply -f gitlab-runner-secret.yml   
 ```
 
-3. Make a copy of gitlab-runner.yml with *different* Runner name, edit `token` to specify the secret name you create at step 2
+3. Make a copy of gitlab-runner.yml with *different* Runner name, edit `token` to specify the secret name you create at step 2 and apply 
+
+```
+$oc apply -f gitlab-runner.yml
+```
+
+
+
+<!-- 
+3. Create Runner in GitLab.com:
+
+* Login to https://gitlab.com, on the left sidebar, select `Groups`.
+* Select a Group that you want to configure Gitlab Runner
+* Select `Build` -> `Runner` on the left sidebar
+* Click on `Create Group runner`, Tick on `Run untagged jobs`, 
+* Click on `Create runner` and copy token from code snippet - something like "glrt-.....".
+
+3. Replace runner token in gitlab-runner-secret.yml and apply:  
+
+```
+$ oc apply -f gitlab-runner-secret.yml   
+``` -->
