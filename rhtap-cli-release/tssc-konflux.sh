@@ -12,6 +12,7 @@ set -o nounset
 set -o pipefail
 
 # Defaults
+FORCE=""
 APP="rhtap-cli"
 VERSION=""
 ALT_VERSION=""
@@ -35,6 +36,7 @@ NEXT_STEPS="\nMerge Request Creation - SUCCESSFUL, See above for MR's URL\n
 "
 REL_STEP="3. Konflux($KONFLUX_URL) Namespace($KONFLUX_NAMESPACE) - Verify Rlease pipeline started and once completed creation of Release is Successful\n"
 APP_STEP="3. Konflux($KONFLUX_URL) Namespace($KONFLUX_NAMESPACE) - Verify Application Successfully added in Konflux.\n"
+RELEASE_DOC="For detailed information on 'Release Steps' See: https://docs.google.com/document/d/1fxd-sq3IxLHWWqJM7Evhh9QeSXpqPMfRHHDBzAmT8-k/edit?tab=t.0#heading=h.9aaha887zz8f"
 
 usage() {
     echo "
@@ -52,6 +54,8 @@ Optional arguments:
         Display this message.
     -k, --keep
         Number of Versions to keep. Default is 3.
+    -f, --force
+        Set force on push command
     -w, --wip
         Set work in progress, MR will be set as Draft
 Example:
@@ -70,6 +74,9 @@ parse_args() {
             set -x
             DEBUG="--debug"
             export DEBUG
+            ;;
+        -f | --force)
+            FORCE="-f"
             ;;
         -h | --help)
             usage
@@ -201,7 +208,7 @@ update_rp() {
 
 run_build_manifests() {
     # Complete modifications by running build-manifest.sh
-    echo -e "\nRunning build-manifests.sh"
+    echo -e "Running build-manifests.sh"
     ./tenants-config/build-manifests.sh > /dev/null
 
     if [ $? -ne 0 ]; then
@@ -243,11 +250,11 @@ release() {
     CURRENT_ALT_VERSION=$(echo "$CURRENT_VERSION" | sed -r 's/\./-/g')
 
     if [[ "$CURRENT_VERSION" != "$VERSION" ]]; then
-        echo "[ERROR] Unable to release. App version $VERSION does not exist."
+        echo "[ERROR] Unable to release. App version $VERSION does look to be the latest."
         exit 1
     fi
 
-    PREV_IDX=$((CURRENT_IDX-1))
+    PREV_IDX="0"
     VER_QUERY="yq eval-all 'select(documentIndex == $PREV_IDX) | .spec.template.values[] | select(.name == \"version\") | .value' $STREAM_FILE"
     PREV_VERSION=`eval "$VER_QUERY"`
     PREV_ALT_VERSION=$(echo "$PREV_VERSION" | sed -r 's/\./-/g')
@@ -256,7 +263,7 @@ release() {
 
     echo -e "\nUpdating files"
     update_rpa
-    echo -e "Updating files - SUCCESSFUL"
+    echo -e "Updating files - SUCCESSFUL\n"
 
     commit_code
 }
@@ -279,7 +286,7 @@ app() {
     update_stream
     update_rp
     delete_old_vers
-    echo -e "Updating files - SUCCESSFUL"
+    echo -e "Updating files - SUCCESSFUL\n"
 
     run_build_manifests
 
@@ -295,7 +302,7 @@ push_changes() {
         ADD_OPT="-o merge_request.draft"
     fi
 
-    CREATE_MR_CMD="git push origin ${APP}-${ACTION}-${VERSION}-${PKG} -o merge_request.create $ADD_OPT -o merge_request.target=main -o merge_request.description=\"$DESCRIPTION\" -o merge_request.remove_source_branch -o merge_request.merge_when_pipeline_succeeds"
+    CREATE_MR_CMD="git push origin ${APP}-${ACTION}-${VERSION}-${PKG} -o merge_request.create $ADD_OPT -o merge_request.target=main -o merge_request.description=\"$DESCRIPTION\" -o merge_request.remove_source_branch -o merge_request.squash=true -o merge_request.merge_when_pipeline_succeeds $FORCE"
 
     eval "$CREATE_MR_CMD"
 
@@ -306,6 +313,7 @@ push_changes() {
     fi
 
     echo -e $NEXT_STEPS
+    echo -e "$RELEASE_DOC"
 }
 
 action() {
@@ -322,7 +330,6 @@ action() {
         app
         TITLE=""
         DESCRIPTION="<h3>What:</h3>This PR is in prep to onboard rhtap-cli release-$VERSION branch as application rhtap-cli-$ALT_VERSION<br /><h3>Why:</h3>We are preparing for rhtap-cli $VERSION release through rhtap-cli release-$VERSION branch<br />"
-        echo $DESCRIPTION
     fi
 
     if [ -z "${DRY_RUN:-}" ]; then
