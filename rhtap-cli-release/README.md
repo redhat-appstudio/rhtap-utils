@@ -39,8 +39,6 @@ Optional arguments:
         Display this message.
     -k, --keep
         Number of Versions to keep. Default is 3.
-    -f, --force
-        Set force on push command
     -w, --wip
         Set work in progress, MR will be set as Draft
 Example:

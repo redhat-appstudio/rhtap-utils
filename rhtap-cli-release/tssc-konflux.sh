@@ -12,7 +12,6 @@ set -o nounset
 set -o pipefail
 
 # Defaults
-FORCE=""
 APP="rhtap-cli"
 VERSION=""
 ALT_VERSION=""
@@ -54,8 +53,6 @@ Optional arguments:
         Display this message.
     -k, --keep
         Number of Versions to keep. Default is 3.
-    -f, --force
-        Set force on push command
     -w, --wip
         Set work in progress, MR will be set as Draft
 Example:
@@ -74,9 +71,6 @@ parse_args() {
             set -x
             DEBUG="--debug"
             export DEBUG
-            ;;
-        -f | --force)
-            FORCE="-f"
             ;;
         -h | --help)
             usage
@@ -302,7 +296,7 @@ push_changes() {
         ADD_OPT="-o merge_request.draft"
     fi
 
-    CREATE_MR_CMD="git push origin ${APP}-${ACTION}-${VERSION}-${PKG} -o merge_request.create $ADD_OPT -o merge_request.target=main -o merge_request.description=\"$DESCRIPTION\" -o merge_request.remove_source_branch -o merge_request.squash=true -o merge_request.merge_when_pipeline_succeeds $FORCE"
+    CREATE_MR_CMD="git push origin ${APP}-${ACTION}-${VERSION}-${PKG} -o merge_request.create $ADD_OPT -o merge_request.target=main -o merge_request.description=\"$DESCRIPTION\" -o merge_request.remove_source_branch -o merge_request.squash=true -o merge_request.merge_when_pipeline_succeeds"
 
     eval "$CREATE_MR_CMD"
 
