@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
-# Script to create MR's to create new application version in konflux and release in konflux
-# Script updates the files and creates MR's. It is left to
-#   the user to get it MR's approved, merged and verify action completes
+# Script to create MR to create new application version and release in konflux
+# Script updates the files and creates MR. It is left to
+#   the user to get MR approved, merged and verify actions complete
 #   successfully in konflux.
-# NOTE: rhtap-cli-stream.yaml is expected to be in order by version. Oldest version first entry,
+#   -k can be used to create a MR that will remove versions over the number to keep.
+# NOTE: tssc-cli-stream.yaml is expected to be in order by version. Oldest version first entry,
 #       new version last entry in file.
 
 set -o errexit
@@ -12,10 +13,10 @@ set -o nounset
 set -o pipefail
 
 # Defaults
-APP="rhtap-cli"
+APP="tssc-cli"
 VERSION=""
 ALT_VERSION=""
-KEEP_VERSIONS="3"
+KEEP_VERSIONS=""
 REPOSITORY="${REPOSITORY:-konflux-release-data}"
 GITLAB_ORG="${GITLAB_ORG:-releng}"
 POSITIONAL_ARGS=()
@@ -23,8 +24,8 @@ KONFLUX_URL="https://konflux-ui.apps.stone-prd-rh01.pg1f.p1.openshiftapps.com"
 KONFLUX_NAMESPACE="rhtap-shared-team-tenant"
 
 # Files
-STREAM_FILE="tenants-config/cluster/stone-prd-rh01/tenants/rhtap-shared-team-tenant/rhtap-cli-stream.yaml"
-RP_FILE_DIR="tenants-config/cluster/stone-prd-rh01/tenants/rhtap-shared-team-tenant"
+STREAM_FILE="tenants-config/cluster/stone-prd-rh01/tenants/rhtap-shared-team-tenant/tssc-cli/tssc-cli-stream.yaml"
+RP_FILE_DIR="tenants-config/cluster/stone-prd-rh01/tenants/rhtap-shared-team-tenant/tssc-cli"
 RPA_FILE_DIR="config/stone-prd-rh01.pg1f.p1/product/ReleasePlanAdmission/rhtap-shared-team"
 
 # Messages
@@ -32,31 +33,31 @@ NEXT_STEPS="\nMerge Request Creation - SUCCESSFUL, See above for MR's URL\n
 \nNEXT STEPS:\n
 	1. Verify/Get MR Approved\n
         2. Merge MR and Verify Successful\n
-"
-REL_STEP="3. Konflux($KONFLUX_URL) Namespace($KONFLUX_NAMESPACE) - Verify Rlease pipeline started and once completed creation of Release is Successful\n"
-APP_STEP="3. Konflux($KONFLUX_URL) Namespace($KONFLUX_NAMESPACE) - Verify Application Successfully added in Konflux.\n"
+        3. Konflux: ($KONFLUX_URL) Namespace: ($KONFLUX_NAMESPACE) - Verify Application added in Konflux\n
+           Release pipeline started. Once pipeline completes, verify creation of Release was Successful\n"
 RELEASE_DOC="For detailed information on 'Release Steps' See: https://docs.google.com/document/d/1fxd-sq3IxLHWWqJM7Evhh9QeSXpqPMfRHHDBzAmT8-k/edit?tab=t.0#heading=h.9aaha887zz8f"
 
 usage() {
     echo "
 Usage:
-    ${0##*/} [options] <action=app|release> <version>
-       <action> =  Action app ( create application) or release (release application).
-       <version> = Application version to create or release on konflux.
+    ${0##*/} [options] <version>
+       <version> = Application version to create and release on konflux.
 
 Optional arguments:
     --dry-run
-        Do not push updates and create MR to merge into upstream main.
+        Do not push updates and create MR.
     -d, --debug
         Activate tracing/debug mode.
     -h, --help
         Display this message.
     -k, --keep
-        Number of Versions to keep. Default is 3.
+        Number of Versions to keep. Will keep this many versions and
+          delete the others. NOTE: <version> should be omitted if not creating
+          new application and release version.
     -w, --wip
         Set work in progress, MR will be set as Draft
 Example:
-    ${0##*/} release 1.7
+    ${0##*/} 1.7
 " >&2
 }
 
@@ -100,17 +101,10 @@ parse_args() {
             ;;
         *)
             POSITIONAL_ARGS+=("$1")
-            if [[ ${#POSITIONAL_ARGS[@]} -gt 2 ]]; then
+            if [[ ${#POSITIONAL_ARGS[@]} -gt 1 ]]; then
                 echo "[ERROR] Unknown argument: $1"
                 usage
                 exit 1
-            elif [[ ${#POSITIONAL_ARGS[@]} -eq 1 ]]; then
-                ACTION="$1"
-                if [[ ${ACTION} != "app" && ${ACTION} != "release" ]]; then
-                    echo "[ERROR] Action must be either 'app' or 'release'. Action: $ACTION"
-                    usage
-                    exit 1
-                fi
             else
                 VERSION="$1"
             fi
@@ -119,10 +113,12 @@ parse_args() {
         shift
     done
 
-    if [[ "${#POSITIONAL_ARGS[@]}" -ne 2 ]]; then
-        echo "[ERROR] Positional arguments 'action' and 'version' are required" 
-        usage
-        exit 1
+    if [[ -z "${KEEP_VERSIONS}" ]]; then
+        if [[ "${#POSITIONAL_ARGS[@]}" -ne 1 ]]; then
+            echo "[ERROR] Positional argument 'version' is required"
+            usage
+            exit 1
+        fi
     fi
 }
 
@@ -147,31 +143,39 @@ cleanup() {
 
 
 create_branch() {
-    git checkout -b "${APP}-${ACTION}-${VERSION}-${PKG}"
+    if [[ -z "${VERSION}" ]]; then
+        BRANCH="${APP}-remove-unsupported-release"
+    else
+        BRANCH="${APP}-${VERSION}-add-release"
+    fi
+    git checkout -b "$BRANCH"
 }
 
 
 update_stream() {
+    LINE="value: \"$VERSION\""
+    if grep -q -x "^[[:space:]]*$LINE" "$STREAM_FILE"; then
+        echo "Error: Version already exists."
+        exit 1
+    fi
     echo "---
 apiVersion: projctl.konflux.dev/v1beta1
 kind: ProjectDevelopmentStream
 metadata:
-  name: rhtap-cli-release-${ALT_VERSION}
+  name: tssc-cli-release-${ALT_VERSION}
 spec:
-  project: rhtap-cli
+  project: tssc-cli
   template:
-    name: rhtap-cli
+    name: tssc-cli
     values:
       - name: version
         value: \"$VERSION\"
       - name: branchName
-        value: \"release-$VERSION\"
-" >> $STREAM_FILE
-
-    NEW_NUM_VERSIONS=$((NUM_VERSIONS + 1))
+        value: \"release-$VERSION\"" >> $STREAM_FILE
 }
 
 delete_old_vers() {
+    NEW_NUM_VERSIONS=`yq eval-all '[.] | length' $STREAM_FILE`
 
     while  [[ $NEW_NUM_VERSIONS -gt $KEEP_VERSIONS ]] 
     do
@@ -179,30 +183,35 @@ delete_old_vers() {
         WORKING_ALT_VERSION=$(echo "$WORKING_VERSION" | sed -r 's/\./-/g')
 
         # Delete old stream
-        yq -i 'del(select(documentIndex == 0))' $STREAM_FILE 
+        yq -i 'del(select(documentIndex == 0))' $STREAM_FILE
 
         # Delete old corresponding RP
-        rm $RP_FILE_DIR/rhtap-cli-rp-$WORKING_ALT_VERSION.yaml 
+        rm $RP_FILE_DIR/tssc-cli-rp-$WORKING_ALT_VERSION.yaml
+
+        # Remove RP from kustomization.yaml
+        sed -i "/tssc-cli-rp-$WORKING_ALT_VERSION.yaml/d" $RP_FILE_DIR/kustomization.yaml
 
         # Delete old corresponding RPA
-        rm $RPA_FILE_DIR/rhtap-cli-prod-$WORKING_ALT_VERSION.yaml
+        rm $RPA_FILE_DIR/tssc-cli-$WORKING_ALT_VERSION-prod.yaml
 
         NEW_NUM_VERSIONS=`yq eval-all '[.] | length' $STREAM_FILE`
     done
 }
 
 update_rp() {
-    cp --update=none-fail $RP_FILE_DIR/rhtap-cli-rp-$CURRENT_ALT_VERSION.yaml $RP_FILE_DIR/rhtap-cli-rp-$ALT_VERSION.yaml
+    cp --update=none-fail $RP_FILE_DIR/tssc-cli-rp-$CURRENT_ALT_VERSION.yaml $RP_FILE_DIR/tssc-cli-rp-$ALT_VERSION.yaml
     SRCH_VERSION=$(echo "$CURRENT_VERSION" | sed -r 's/\./\\\./g')
     RPL_VERSION=$(echo "$VERSION" | sed -r 's/\./\\\./g')
-    sed -i "s/$SRCH_VERSION/$RPL_VERSION/g" $RP_FILE_DIR/rhtap-cli-rp-$ALT_VERSION.yaml
-    sed -i "s/$CURRENT_ALT_VERSION/$ALT_VERSION/g" $RP_FILE_DIR/rhtap-cli-rp-$ALT_VERSION.yaml
+    sed -i "s/$SRCH_VERSION/$RPL_VERSION/g" $RP_FILE_DIR/tssc-cli-rp-$ALT_VERSION.yaml
+    sed -i "s/$CURRENT_ALT_VERSION/$ALT_VERSION/g" $RP_FILE_DIR/tssc-cli-rp-$ALT_VERSION.yaml
+    echo "  - tssc-cli-rp-$ALT_VERSION.yaml" >> $RP_FILE_DIR/kustomization.yaml
 }
 
 
 run_build_manifests() {
     # Complete modifications by running build-manifest.sh
-    echo -e "Running build-manifests.sh"
+    echo -e "\nRunning build-manifests.sh"
+    #./tenants-config/build-single.sh $KONFLUX_NAMESPACE > /dev/null
     ./tenants-config/build-manifests.sh > /dev/null
 
     if [ $? -ne 0 ]; then
@@ -218,33 +227,30 @@ run_build_manifests() {
 
 
 update_rpa() {
-    cp --update=none-fail $RPA_FILE_DIR/rhtap-cli-prod-$PREV_ALT_VERSION.yaml $RPA_FILE_DIR/rhtap-cli-prod-$ALT_VERSION.yaml
+    cp --update=none-fail $RPA_FILE_DIR/tssc-cli-$PREV_ALT_VERSION-prod.yaml $RPA_FILE_DIR/tssc-cli-$ALT_VERSION-prod.yaml
     SRCH_VERSION=$(echo "$PREV_VERSION" | sed -r 's/\./\\\./g')
     RPL_VERSION=$(echo "$VERSION" | sed -r 's/\./\\\./g')
-    sed -i "s/$SRCH_VERSION/$RPL_VERSION/g" $RPA_FILE_DIR/rhtap-cli-prod-$ALT_VERSION.yaml
-    sed -i "s/$PREV_ALT_VERSION/$ALT_VERSION/g" $RPA_FILE_DIR/rhtap-cli-prod-$ALT_VERSION.yaml
+    sed -i "s/$SRCH_VERSION/$RPL_VERSION/g" $RPA_FILE_DIR/tssc-cli-$ALT_VERSION-prod.yaml
+    sed -i "s/$PREV_ALT_VERSION/$ALT_VERSION/g" $RPA_FILE_DIR/tssc-cli-$ALT_VERSION-prod.yaml
 }
 
 
 commit_code() {
+    MESSAGE="release tssc-cli $VERSION.0 to quay.io/redhat-tssc/cli (Automated)"
     git add --all .
     git commit -m "$MESSAGE"
 }
 
 
 release() {
-    MESSAGE="release rhtap-cli $VERSION.0 (Automated)"
-    PKG="rpa"
-
     NUM_VERSIONS=`yq eval-all '[.] | length' $STREAM_FILE`
-
     CURRENT_IDX=$((NUM_VERSIONS-1))
     VER_QUERY="yq eval-all 'select(documentIndex == $CURRENT_IDX) | .spec.template.values[] | select(.name == \"version\") | .value' $STREAM_FILE"
     CURRENT_VERSION=`eval "$VER_QUERY"`
     CURRENT_ALT_VERSION=$(echo "$CURRENT_VERSION" | sed -r 's/\./-/g')
 
     if [[ "$CURRENT_VERSION" != "$VERSION" ]]; then
-        echo "[ERROR] Unable to release. App version $VERSION does look to be the latest."
+        echo "[ERROR] Unable to release. App version $VERSION does not look to be the latest."
         exit 1
     fi
 
@@ -253,41 +259,28 @@ release() {
     PREV_VERSION=`eval "$VER_QUERY"`
     PREV_ALT_VERSION=$(echo "$PREV_VERSION" | sed -r 's/\./-/g')
 
-    create_branch
-
-    echo -e "\nUpdating files"
+    echo -e "Creating RPA file"
     update_rpa
-    echo -e "Updating files - SUCCESSFUL\n"
-
-    commit_code
+    echo -e "Creation of RPA - SUCCESSFUL"
 }
 
 
 app() {
-    MESSAGE="Update rhtap-cli-stream for setup of release $VERSION (Automated)"
-    PKG="stream"
-
     NUM_VERSIONS=`yq eval-all '[.] | length' $STREAM_FILE`
-
     CURRENT_IDX=$((NUM_VERSIONS-1))
     VER_QUERY="yq eval-all 'select(documentIndex == $CURRENT_IDX) | .spec.template.values[] | select(.name == \"version\") | .value' $STREAM_FILE"
     CURRENT_VERSION=`eval "$VER_QUERY"`
     CURRENT_ALT_VERSION=$(echo "$CURRENT_VERSION" | sed -r 's/\./-/g')
 
-    create_branch
-
-    echo -e "\nUpdating files"
+    echo -e "\nUpdating application files"
     update_stream
     update_rp
-    delete_old_vers
     echo -e "Updating files - SUCCESSFUL\n"
-
-    run_build_manifests
-
-    commit_code
 }
 
 push_changes() {
+    DESCRIPTION="<h3>What:</h3>release tssc-cli $VERSION application to quay.io/redhat-tssc/cli<br /><h3>Why:</h3><br />"
+
     echo -e "\nPushing changes and creating MR\n"
 
     if [ -z "${WIP:-}" ]; then
@@ -296,15 +289,9 @@ push_changes() {
         ADD_OPT="-o merge_request.draft"
     fi
 
-    CREATE_MR_CMD="git push origin ${APP}-${ACTION}-${VERSION}-${PKG} -o merge_request.create $ADD_OPT -o merge_request.target=main -o merge_request.description=\"$DESCRIPTION\" -o merge_request.remove_source_branch -o merge_request.squash=true -o merge_request.merge_when_pipeline_succeeds"
+    CREATE_MR_CMD="git push origin ${BRANCH} -o merge_request.create $ADD_OPT -o merge_request.target=main -o merge_request.description=\"$DESCRIPTION\" -o merge_request.remove_source_branch -o merge_request.squash=true -o merge_request.merge_when_pipeline_succeeds"
 
     eval "$CREATE_MR_CMD"
-
-    if [ "${ACTION}" == "release" ]; then
-        NEXT_STEPS="$NEXT_STEPS$REL_STEP"
-    else
-        NEXT_STEPS="$NEXT_STEPS$APP_STEP"
-    fi
 
     echo -e $NEXT_STEPS
     echo -e "$RELEASE_DOC"
@@ -316,16 +303,29 @@ action() {
     # Set alternate version #-#
     ALT_VERSION=$(echo "$VERSION" | sed -r 's/\./-/g')
 
-    if [ "${ACTION}" == "release" ]; then
-        release
-        TITLE=""
-        DESCRIPTION="<h3>What:</h3>RPA is added for the rhtap-cli $VERSION application and component<br /><h3>Why:</h3>This PR is to release rhtap-cli $VERSION<br />"
-    else
+    # Create branch to perform work
+    create_branch
+
+    if [[ -n "${VERSION}" ]]; then
+        # Update application files
         app
-        TITLE=""
-        DESCRIPTION="<h3>What:</h3>This PR is in prep to onboard rhtap-cli release-$VERSION branch as application rhtap-cli-$ALT_VERSION<br /><h3>Why:</h3>We are preparing for rhtap-cli $VERSION release through rhtap-cli release-$VERSION branch<br />"
+
+        # Add Release Plan Admission
+        release
     fi
 
+    # Delete old unsupported versions.
+    if [[ -n "${KEEP_VERSIONS}" ]]; then
+        delete_old_vers
+    fi
+
+    # Run build_manifest
+    run_build_manifests
+
+    # Commit changes
+    commit_code
+
+    # Push changes if not a dry run
     if [ -z "${DRY_RUN:-}" ]; then
         push_changes
     fi
