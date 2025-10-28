@@ -1,28 +1,52 @@
 #!/bin/bash
 
-# Jenkins server details
-JENKINS__URL="<Jenkins URL>"
-JENKINS__USERNAME="<Jenkins user ID>"
-JENKINS__TOKEN="<Jenkins API token>"
+NAMESPACE="tssc"
 
-PASSWORD=$(pwgen -N1 -s 128)
-COSIGN_PASSWORD=$PASSWORD cosign generate-key-pair
-COSIGN_SECRET_PASSWORD="$(base64 -w0 <<< $PASSWORD)"
-COSIGN_SECRET_KEY="$(base64 -w0 < cosign.key)"
-COSIGN_PUBLIC_KEY="$(base64 -w0 < cosign.pub)"
-GITOPS_AUTH_USERNAME="<GitOps username>"
-GITOPS_GIT_TOKEN="<GitOps token>"
-QUAY_USERNAME="<Quay username>"
-QUAY_PASSWORD="<Quay password>"
-ACS_TOKEN="<ACS token>"
-ACS_ENDPOINT="<ACS endpoint>"
+# Jenkins server details
+SECRET="tssc-jenkins-integration"
+JENKINS_SECRET_JSON=$(oc get secrets -n "$NAMESPACE" "$SECRET" -o json)
+JENKINS__URL="$(echo "$JENKINS_SECRET_JSON" | jq -r '.data.baseUrl | @base64d')"
+JENKINS__USERNAME="$(echo "$JENKINS_SECRET_JSON" | jq -r '.data.username | @base64d')"
+JENKINS__TOKEN="$(echo "$JENKINS_SECRET_JSON" | jq -r '.data.token | @base64d')"
+
+
+COSIGN_SECRET_JSON=$(oc get secrets -n openshift-pipelines signing-secrets -o json)
+COSIGN_SECRET_KEY="$(echo "$COSIGN_SECRET_JSON" | jq -r '.data."cosign.key"')"
+COSIGN_SECRET_PASSWORD="$(echo "$COSIGN_SECRET_JSON" | jq -r '.data."cosign.password"')"
+COSIGN_PUBLIC_KEY="$(echo "$COSIGN_SECRET_JSON" | jq -r '.data."cosign.pub"')"
+
+SECRET="tssc-github-integration"
+GITOPS_SECRET_JSON=$(oc get secrets -n "$NAMESPACE" "$SECRET" -o json)
+GITOPS_GIT_TOKEN="$(echo "$GITOPS_SECRET_JSON" | jq -r '.data.token | @base64d')"
+GITOPS_AUTH_USERNAME="$(echo "$GITOPS_SECRET_JSON" | jq -r '.data.username | @base64d')"
+
+
+SECRET="tssc-quay-integration"
+REGISTRY_SECRET_JSON=$(oc get secrets -n "$NAMESPACE" "$SECRET" -o json)
+QUAY_USERNAME="$(
+    echo "$REGISTRY_SECRET_JSON" \
+    | jq -r '.data.".dockerconfigjson" | @base64d' \
+    | jq -r '.auths | to_entries[0].value.auth | @base64d' \
+    | cut -d: -f1
+)"
+QUAY_PASSWORD="$(
+    echo "$REGISTRY_SECRET_JSON" \
+    | jq -r '.data.".dockerconfigjson" | @base64d' \
+    | jq -r '.auths | to_entries[0].value.auth | @base64d' \
+    | cut -d: -f2-
+)"
+
+SECRET="tssc-acs-integration"
+ACS_ENDPOINT="$(oc get secrets -n "$NAMESPACE" "$SECRET" -o json | jq -r '.data.endpoint | @base64d')"
+ACS_TOKEN="$(oc get secrets -n "$NAMESPACE" "$SECRET" -o json | jq -r '.data.token | @base64d')"
 
 # SBOM automatic upload creds
-TRUSTIFICATION_BOMBASTIC_API_URL="$(kubectl get -n rhtap secrets/rhtap-trustification-integration --template={{.data.bombastic_api_url}} | base64 -d)"
-TRUSTIFICATION_OIDC_ISSUER_URL="$(kubectl get -n rhtap secrets/rhtap-trustification-integration --template={{.data.oidc_issuer_url}} | base64 -d)"
-TRUSTIFICATION_OIDC_CLIENT_ID="$(kubectl get -n rhtap secrets/rhtap-trustification-integration --template={{.data.oidc_client_id}} | base64 -d)"
-TRUSTIFICATION_OIDC_CLIENT_SECRET="$(kubectl get -n rhtap secrets/rhtap-trustification-integration --template={{.data.oidc_client_secret}} | base64 -d)"
-TRUSTIFICATION_SUPPORTED_CYCLONEDX_VERSION="$(kubectl get -n rhtap secrets/rhtap-trustification-integration --template={{.data.supported_cyclonedx_version}} | base64 -d)"
+SECRET="tssc-trustification-integration"
+TRUSTIFICATION_BOMBASTIC_API_URL="$(oc get secret -n "$NAMESPACE" "$SECRET" --template={{.data.bombastic_api_url}} | base64 -d)"
+TRUSTIFICATION_OIDC_ISSUER_URL="$(oc get secret -n "$NAMESPACE" "$SECRET" --template={{.data.oidc_issuer_url}} | base64 -d)"
+TRUSTIFICATION_OIDC_CLIENT_ID="$(oc get secret -n "$NAMESPACE" "$SECRET" --template={{.data.oidc_client_id}} | base64 -d)"
+TRUSTIFICATION_OIDC_CLIENT_SECRET="$(oc get secret -n "$NAMESPACE" "$SECRET" --template={{.data.oidc_client_secret}} | base64 -d)"
+TRUSTIFICATION_SUPPORTED_CYCLONEDX_VERSION="$(oc get secret -n "$NAMESPACE" "$SECRET" --template={{.data.supported_cyclonedx_version}} | base64 -d)"
 
 
 # Arrays of credential details
