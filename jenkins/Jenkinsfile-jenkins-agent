@@ -1,15 +1,14 @@
     agent {
         kubernetes {
-            label 'jenkins-agent'
-            cloud 'openshift'
-            serviceAccount 'jenkins'
-            podRetention onFailure()
-            idleMinutes '30'
-            containerTemplate {
-                name 'jnlp'
-                image 'image-registry.openshift-image-registry.svc:5000/jenkins/jenkins-agent-base:latest'
-                ttyEnabled true
-                args '${computer.jnlpmac} ${computer.name}'
-            }
+            yaml """
+              apiVersion: v1
+              kind: Pod
+              spec:
+                containers:
+                - name: 'runner'
+                  image: 'quay.io/redhat-appstudio/rhtap-task-runner:latest'
+                  securityContext:
+                    privileged: true
+            """
         }
     }
