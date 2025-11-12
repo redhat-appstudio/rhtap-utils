@@ -15,8 +15,7 @@ now=$(date +%s)
 cutoff_time=$((now - 14 * 24 * 60 * 60))
 
 # Set the regex string to match with e2e-tests repos name
-repo_name_regex="^[0-9a-z]{9}-(python|dotnet-basic|java-quarkus|go|nodejs|java-springboot)"
-
+repo_name_regex="^[a-z0-9-]+-(python|dotnet-basic|java-quarkus|go|nodejs|java-springboot)(-[0-9a-z]+)?(-gitops)?$"
 # Fetch the list of repositories from GitHub API
 repos=$(curl -s -X GET -H "$AUTH_HEADER" "https://api.github.com/orgs/$GITHUB_ORG/repos?per_page=100&sort=name")
 if [ "$(echo $repos | jq -r .status 2>/dev/null)" ]; then
