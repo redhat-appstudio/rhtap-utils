@@ -11,7 +11,7 @@ fsGroup:
 kind: SecurityContextConstraints
 metadata:
   name: gitlab-ci-sa-scc
-  namepace: gitlab-runner
+  namespace: gitlab-runner
 priority: 5
 readOnlyRootFilesystem: false
 requiredDropCapabilities:
